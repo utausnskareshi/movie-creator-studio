@@ -394,6 +394,15 @@ class JobQueue {
 
         // watchdog: even if the WS misses the final event, /history is authoritative
         poll = setInterval(() => {
+          // キャンセル済みなら interrupt を再送し続ける。cancel() の1回きりの
+          // interrupt は、モデル初期化などで Python が分単位でブロックしている
+          // 間はタイムアウトして失われる(実機: Cosmos v2w 初期化 56 秒)。
+          // 失われると「キャンセル済み」表示のまま生成が最後まで走り、その間
+          // キューも塞がる。キューは直列なので他のプロンプトを誤爆する余地は
+          // なく、アイドルのエンジンへの interrupt は無害な no-op。
+          if (this.jobs.get(jobId)?.state === 'cancelled') {
+            void client.interrupt().catch(() => undefined)
+          }
           void client.historyState(promptId).then((st) => {
             if (st === 'completed') settle?.resolve()
             else if (st === 'error') settle?.reject(new Error('生成に失敗しました(ComfyUI側でエラー)'))
