@@ -514,3 +514,8 @@ class JobQueue {
 }
 
 export const jobQueue = new JobQueue()
+
+// エンジンのヘルスチェックに「ジョブ実行中か」を教える(実行中はモデル初期化
+// による長い無応答が正常のため、応答なし判定の閾値が緩和される)。queue は
+// 元々 manager に依存しているので、この向きの登録なら循環参照にならない。
+comfyManager.setBusyProbe(() => jobQueue.hasActive())

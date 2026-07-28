@@ -22,6 +22,12 @@ export class ComfyManager {
   private everReady = false
   private stopping = false
   private startPromise: Promise<EngineStatus> | null = null
+  /** returns true while a generation job is queued/executing (set by jobs/queue) */
+  private busyProbe: (() => boolean) | null = null
+
+  setBusyProbe(fn: () => boolean): void {
+    this.busyProbe = fn
+  }
 
   onStatus(cb: StatusCb): () => void {
     this.listeners.add(cb)
@@ -268,11 +274,19 @@ export class ComfyManager {
       }
       // A process that is alive but no longer answering used to be reported as
       // 'running' forever, so a job waited on it indefinitely and the queue
-      // wedged. Surface it after 3 consecutive misses — and KILL the wedged
-      // process: left resident, the next start() would spawn a second engine
-      // beside it (two pythons, VRAM held twice over).
+      // wedged. Surface it — and KILL the wedged process: left resident, the
+      // next start() would spawn a second engine beside it (two pythons, VRAM
+      // held twice over).
+      //
+      // 閾値はジョブの有無で変える。モデルの初期ロードは Python を分単位で
+      // 完全ブロックし HTTP が黙るのが正常(実機: Cosmos video2world の
+      // 初回ステップが 56 秒無応答 → 旧固定 3 回 = 45 秒で誤検出し、正常な
+      // 生成中のエンジンを kill していた)。ジョブ実行中は 20 回 = 約5分を
+      // 「真に固まった場合の最後の砦」とし、即時性はアイドル時のみ求める
+      // (ジョブ自身には /history ウォッチドッグと WS 監視が別にある)。
       consecutiveFailures += 1
-      if (consecutiveFailures >= 3 && this.status.state === 'running') {
+      const limit = this.busyProbe?.() ? 20 : 3
+      if (consecutiveFailures >= limit && this.status.state === 'running') {
         this.stopHealthTimer()
         void this.stop().finally(() => {
           this.setStatus({
