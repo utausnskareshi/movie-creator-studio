@@ -1,0 +1,158 @@
+{
+  "unet_high": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "animegen_t2v_high_noise_bf16.safetensors",
+      "weight_dtype": "default"
+    },
+    "_meta": { "title": "Load AnimeGen Model (High Noise)" }
+  },
+  "unet_low": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "animegen_t2v_low_noise_bf16.safetensors",
+      "weight_dtype": "default"
+    },
+    "_meta": { "title": "Load AnimeGen Model (Low Noise)" }
+  },
+  "lora_high": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": ["unet_high", 0],
+      "lora_name": "wan2.2_t2v_lightning_250928_high_noise.safetensors",
+      "strength_model": 2.0
+    },
+    "_meta": { "title": "Lightning LoRA 250928 (High Noise, strength 2.0 per AIdeaLab)" }
+  },
+  "lora_low": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": ["unet_low", 0],
+      "lora_name": "wan2.2_t2v_lightning_250928_low_noise.safetensors",
+      "strength_model": 1.0
+    },
+    "_meta": { "title": "Lightning LoRA 250928 (Low Noise)" }
+  },
+  "model_sampling_high": {
+    "class_type": "ModelSamplingSD3",
+    "inputs": {
+      "model": ["lora_high", 0],
+      "shift": 5.0
+    },
+    "_meta": { "title": "ModelSamplingSD3 (High Noise)" }
+  },
+  "model_sampling_low": {
+    "class_type": "ModelSamplingSD3",
+    "inputs": {
+      "model": ["lora_low", 0],
+      "shift": 5.0
+    },
+    "_meta": { "title": "ModelSamplingSD3 (Low Noise)" }
+  },
+  "clip": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan",
+      "device": "default"
+    },
+    "_meta": { "title": "Load CLIP" }
+  },
+  "positive": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "",
+      "clip": ["clip", 0]
+    },
+    "_meta": { "title": "CLIP Text Encode (Positive Prompt)" }
+  },
+  "negative": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "3d, cg, photo, stop, wait",
+      "clip": ["clip", 0]
+    },
+    "_meta": { "title": "CLIP Text Encode (Negative Prompt)" }
+  },
+  "empty_latent": {
+    "class_type": "EmptyHunyuanLatentVideo",
+    "inputs": {
+      "width": 832,
+      "height": 480,
+      "length": 81,
+      "batch_size": 1
+    },
+    "_meta": { "title": "Empty Video Latent" }
+  },
+  "sampler_1": {
+    "class_type": "KSamplerAdvanced",
+    "inputs": {
+      "model": ["model_sampling_high", 0],
+      "add_noise": "enable",
+      "noise_seed": 0,
+      "steps": 4,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "positive": ["positive", 0],
+      "negative": ["negative", 0],
+      "latent_image": ["empty_latent", 0],
+      "start_at_step": 0,
+      "end_at_step": 2,
+      "return_with_leftover_noise": "enable"
+    },
+    "_meta": { "title": "KSampler (Advanced) - High Noise" }
+  },
+  "sampler_2": {
+    "class_type": "KSamplerAdvanced",
+    "inputs": {
+      "model": ["model_sampling_low", 0],
+      "add_noise": "disable",
+      "noise_seed": 0,
+      "steps": 4,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "positive": ["positive", 0],
+      "negative": ["negative", 0],
+      "latent_image": ["sampler_1", 0],
+      "start_at_step": 2,
+      "end_at_step": 4,
+      "return_with_leftover_noise": "disable"
+    },
+    "_meta": { "title": "KSampler (Advanced) - Low Noise" }
+  },
+  "vae": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "wan_2.1_vae.safetensors"
+    },
+    "_meta": { "title": "Load VAE" }
+  },
+  "decode": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["sampler_2", 0],
+      "vae": ["vae", 0]
+    },
+    "_meta": { "title": "VAE Decode" }
+  },
+  "create_video": {
+    "class_type": "CreateVideo",
+    "inputs": {
+      "images": ["decode", 0],
+      "fps": 16.0
+    },
+    "_meta": { "title": "Create Video" }
+  },
+  "save_video": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": ["create_video", 0],
+      "filename_prefix": "video/mcs",
+      "format": "auto",
+      "codec": "auto"
+    },
+    "_meta": { "title": "Save Video" }
+  }
+}

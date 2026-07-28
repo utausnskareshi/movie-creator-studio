@@ -1,0 +1,49 @@
+{
+  "name": "movie-creator-studio",
+  "version": "1.0.0",
+  "description": "Local AI video generation studio for Windows — 7 video models on an embedded ComfyUI engine, with library management, editing and SNS export.",
+  "main": "out/main/index.js",
+  "author": "utausnskareshi",
+  "license": "MIT",
+  "homepage": "https://github.com/utausnskareshi/movie-creator-studio",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/utausnskareshi/movie-creator-studio.git"
+  },
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "test": "vitest run",
+    "icon": "node scripts/make-icon.mjs",
+    "dist": "npm run icon && electron-vite build && electron-builder --win",
+    "publish": "npm run icon && electron-vite build && electron-builder --win --publish always"
+  },
+  "dependencies": {
+    "7zip-bin": "^5.2.0",
+    "electron-updater": "^6.8.9",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.2",
+    "@types/node": "^26.1.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^43.1.1",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "tailwindcss": "^4.3.2",
+    "typescript": "^7.0.2",
+    "vite": "^7.3.6",
+    "vitest": "^4.1.10"
+  },
+  "allowScripts": {
+    "electron@43.1.1": true,
+    "electron-winstaller@5.4.0": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.1": true
+  }
+}

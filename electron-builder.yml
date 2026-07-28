@@ -1,0 +1,43 @@
+appId: com.utausnskareshi.movie-creator-studio
+productName: Movie Creator Studio
+copyright: Copyright © 2026 utausnskareshi
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - out/**
+  - package.json
+
+extraResources:
+  - from: resources/workflows
+    to: workflows
+    filter: ['*.json']
+
+asarUnpack:
+  - node_modules/7zip-bin/**
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.ico
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  # userData/dataDir removal is handled by build/installer.nsh with a
+  # Japanese confirm dialog (deleteAppDataOnUninstall only works for oneClick)
+  deleteAppDataOnUninstall: false
+  shortcutName: Movie Creator Studio
+  include: build/installer.nsh
+  # 日本語のみ(言語セレクタなし)
+  installerLanguages:
+    - ja_JP
+
+publish:
+  provider: github
+  owner: utausnskareshi
+  repo: movie-creator-studio

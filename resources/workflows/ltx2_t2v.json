@@ -1,0 +1,440 @@
+{
+  "ckpt": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "ltx-2.3-22b-dev-fp8.safetensors"
+    },
+    "_meta": {
+      "title": "Load Checkpoint (LTX-2.3)"
+    }
+  },
+  "text_encoder": {
+    "class_type": "LTXAVTextEncoderLoader",
+    "inputs": {
+      "text_encoder": "gemma_3_12B_it_fp4_mixed.safetensors",
+      "ckpt_name": "ltx-2.3-22b-dev-fp8.safetensors",
+      "device": "default"
+    },
+    "_meta": {
+      "title": "Load LTXV Text Encoder (Gemma)"
+    }
+  },
+  "audio_vae": {
+    "class_type": "LTXVAudioVAELoader",
+    "inputs": {
+      "ckpt_name": "ltx-2.3-22b-dev-fp8.safetensors"
+    },
+    "_meta": {
+      "title": "Load LTXV Audio VAE"
+    }
+  },
+  "upscale_model": {
+    "class_type": "LatentUpscaleModelLoader",
+    "inputs": {
+      "model_name": "ltx-2.3-spatial-upscaler-x2-1.1.safetensors"
+    },
+    "_meta": {
+      "title": "Load Latent Upscale Model"
+    }
+  },
+  "lora": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": [
+        "ckpt",
+        0
+      ],
+      "lora_name": "ltx_2.3_22b_distilled_1.1_lora_dynamic_fro09_avg_rank_111_bf16.safetensors",
+      "strength_model": 0.5
+    },
+    "_meta": {
+      "title": "Distilled LoRA"
+    }
+  },
+  "positive": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "",
+      "clip": [
+        "text_encoder",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "negative": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "pc game, console game, video game, cartoon, childish, ugly",
+      "clip": [
+        "text_encoder",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "CLIP Text Encode (Negative Prompt)"
+    }
+  },
+  "conditioning": {
+    "class_type": "LTXVConditioning",
+    "inputs": {
+      "positive": [
+        "positive",
+        0
+      ],
+      "negative": [
+        "negative",
+        0
+      ],
+      "frame_rate": 25.0
+    },
+    "_meta": {
+      "title": "LTXV Conditioning"
+    }
+  },
+  "empty_latent": {
+    "class_type": "EmptyLTXVLatentVideo",
+    "inputs": {
+      "width": 640,
+      "height": 360,
+      "length": 126,
+      "batch_size": 1
+    },
+    "_meta": {
+      "title": "Empty LTXV Latent Video (base, target/2)"
+    }
+  },
+  "empty_audio": {
+    "class_type": "LTXVEmptyLatentAudio",
+    "inputs": {
+      "frames_number": 126,
+      "frame_rate": 25,
+      "batch_size": 1,
+      "audio_vae": [
+        "audio_vae",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "LTXV Empty Latent Audio"
+    }
+  },
+  "concat_av_1": {
+    "class_type": "LTXVConcatAVLatent",
+    "inputs": {
+      "video_latent": [
+        "empty_latent",
+        0
+      ],
+      "audio_latent": [
+        "empty_audio",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Concat A/V Latent (base)"
+    }
+  },
+  "noise_1": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 0
+    },
+    "_meta": {
+      "title": "Random Noise (base)"
+    }
+  },
+  "guider_1": {
+    "class_type": "CFGGuider",
+    "inputs": {
+      "model": [
+        "lora",
+        0
+      ],
+      "positive": [
+        "conditioning",
+        0
+      ],
+      "negative": [
+        "conditioning",
+        1
+      ],
+      "cfg": 1
+    },
+    "_meta": {
+      "title": "CFG Guider (base)"
+    }
+  },
+  "sampler_select_1": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "_meta": {
+      "title": "Sampler Select (base)"
+    }
+  },
+  "sigmas_1": {
+    "class_type": "ManualSigmas",
+    "inputs": {
+      "sigmas": "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
+    },
+    "_meta": {
+      "title": "Manual Sigmas (base)"
+    }
+  },
+  "sampler_1": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": [
+        "noise_1",
+        0
+      ],
+      "guider": [
+        "guider_1",
+        0
+      ],
+      "sampler": [
+        "sampler_select_1",
+        0
+      ],
+      "sigmas": [
+        "sigmas_1",
+        0
+      ],
+      "latent_image": [
+        "concat_av_1",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Sampler Custom Advanced (base)"
+    }
+  },
+  "separate_1": {
+    "class_type": "LTXVSeparateAVLatent",
+    "inputs": {
+      "av_latent": [
+        "sampler_1",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Separate A/V Latent (base)"
+    }
+  },
+  "crop_guides": {
+    "class_type": "LTXVCropGuides",
+    "inputs": {
+      "positive": [
+        "conditioning",
+        0
+      ],
+      "negative": [
+        "conditioning",
+        1
+      ],
+      "latent": [
+        "separate_1",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "LTXV Crop Guides"
+    }
+  },
+  "upsampler": {
+    "class_type": "LTXVLatentUpsampler",
+    "inputs": {
+      "samples": [
+        "separate_1",
+        0
+      ],
+      "upscale_model": [
+        "upscale_model",
+        0
+      ],
+      "vae": [
+        "ckpt",
+        2
+      ]
+    },
+    "_meta": {
+      "title": "LTXV Latent Upsampler"
+    }
+  },
+  "concat_av_2": {
+    "class_type": "LTXVConcatAVLatent",
+    "inputs": {
+      "video_latent": [
+        "upsampler",
+        0
+      ],
+      "audio_latent": [
+        "separate_1",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "Concat A/V Latent (refine)"
+    }
+  },
+  "noise_2": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 0
+    },
+    "_meta": {
+      "title": "Random Noise (refine)"
+    }
+  },
+  "guider_2": {
+    "class_type": "CFGGuider",
+    "inputs": {
+      "model": [
+        "lora",
+        0
+      ],
+      "positive": [
+        "crop_guides",
+        0
+      ],
+      "negative": [
+        "crop_guides",
+        1
+      ],
+      "cfg": 1
+    },
+    "_meta": {
+      "title": "CFG Guider (refine)"
+    }
+  },
+  "sampler_select_2": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "_meta": {
+      "title": "Sampler Select (refine)"
+    }
+  },
+  "sigmas_2": {
+    "class_type": "ManualSigmas",
+    "inputs": {
+      "sigmas": "0.85, 0.7250, 0.4219, 0.0"
+    },
+    "_meta": {
+      "title": "Manual Sigmas (refine)"
+    }
+  },
+  "sampler_2": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": [
+        "noise_2",
+        0
+      ],
+      "guider": [
+        "guider_2",
+        0
+      ],
+      "sampler": [
+        "sampler_select_2",
+        0
+      ],
+      "sigmas": [
+        "sigmas_2",
+        0
+      ],
+      "latent_image": [
+        "concat_av_2",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Sampler Custom Advanced (refine)"
+    }
+  },
+  "separate_2": {
+    "class_type": "LTXVSeparateAVLatent",
+    "inputs": {
+      "av_latent": [
+        "sampler_2",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Separate A/V Latent (refine)"
+    }
+  },
+  "decode": {
+    "class_type": "VAEDecodeTiled",
+    "inputs": {
+      "samples": [
+        "separate_2",
+        0
+      ],
+      "vae": [
+        "ckpt",
+        2
+      ],
+      "tile_size": 768,
+      "overlap": 64,
+      "temporal_size": 4096,
+      "temporal_overlap": 4
+    },
+    "_meta": {
+      "title": "VAE Decode (Tiled)"
+    }
+  },
+  "audio_decode": {
+    "class_type": "LTXVAudioVAEDecode",
+    "inputs": {
+      "samples": [
+        "separate_2",
+        1
+      ],
+      "audio_vae": [
+        "audio_vae",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "LTXV Audio VAE Decode"
+    }
+  },
+  "create_video": {
+    "class_type": "CreateVideo",
+    "inputs": {
+      "images": [
+        "decode",
+        0
+      ],
+      "audio": [
+        "audio_decode",
+        0
+      ],
+      "fps": 25.0
+    },
+    "_meta": {
+      "title": "Create Video"
+    }
+  },
+  "save_video": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": [
+        "create_video",
+        0
+      ],
+      "filename_prefix": "video/mcs",
+      "format": "auto",
+      "codec": "auto"
+    },
+    "_meta": {
+      "title": "Save Video"
+    }
+  }
+}

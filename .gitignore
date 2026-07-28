@@ -1,0 +1,14 @@
+node_modules/
+out/
+dist/
+release/
+build/icon.ico
+*.log
+.DS_Store
+Thumbs.db
+.vite/
+coverage/
+
+.review/
+
+.claude/

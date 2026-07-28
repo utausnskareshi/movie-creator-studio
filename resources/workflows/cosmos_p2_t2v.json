@@ -1,0 +1,137 @@
+{
+  "unet_t2i": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "cosmos_predict2_2B_t2i.safetensors",
+      "weight_dtype": "default"
+    },
+    "_meta": { "title": "Load Diffusion Model (Text to Image)" }
+  },
+  "unet_video": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "cosmos_predict2_2B_video2world_720p_16fps.safetensors",
+      "weight_dtype": "default"
+    },
+    "_meta": { "title": "Load Diffusion Model (Video2World)" }
+  },
+  "clip": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "oldt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "cosmos",
+      "device": "default"
+    },
+    "_meta": { "title": "Load CLIP (oldT5-XXL)" }
+  },
+  "positive": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "",
+      "clip": ["clip", 0]
+    },
+    "_meta": { "title": "CLIP Text Encode (Positive Prompt)" }
+  },
+  "negative": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "low quality",
+      "clip": ["clip", 0]
+    },
+    "_meta": { "title": "CLIP Text Encode (Negative Prompt)" }
+  },
+  "empty_latent": {
+    "class_type": "EmptySD3LatentImage",
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "_meta": { "title": "Empty Latent Image (T2I Stage)" }
+  },
+  "sampler_1": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": ["unet_t2i", 0],
+      "seed": 0,
+      "steps": 30,
+      "cfg": 4.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "positive": ["positive", 0],
+      "negative": ["negative", 0],
+      "latent_image": ["empty_latent", 0],
+      "denoise": 1.0
+    },
+    "_meta": { "title": "KSampler (T2I Stage)" }
+  },
+  "decode_t2i": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["sampler_1", 0],
+      "vae": ["vae", 0]
+    },
+    "_meta": { "title": "VAE Decode (T2I Stage)" }
+  },
+  "i2v": {
+    "class_type": "CosmosPredict2ImageToVideoLatent",
+    "inputs": {
+      "vae": ["vae", 0],
+      "width": 1280,
+      "height": 720,
+      "length": 93,
+      "batch_size": 1,
+      "start_image": ["decode_t2i", 0]
+    },
+    "_meta": { "title": "Cosmos Predict2 Image to Video Latent" }
+  },
+  "sampler_2": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": ["unet_video", 0],
+      "seed": 0,
+      "steps": 30,
+      "cfg": 4.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "positive": ["positive", 0],
+      "negative": ["negative", 0],
+      "latent_image": ["i2v", 0],
+      "denoise": 1.0
+    },
+    "_meta": { "title": "KSampler (Video Stage)" }
+  },
+  "vae": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "wan_2.1_vae.safetensors"
+    },
+    "_meta": { "title": "Load VAE" }
+  },
+  "decode": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["sampler_2", 0],
+      "vae": ["vae", 0]
+    },
+    "_meta": { "title": "VAE Decode (Video)" }
+  },
+  "create_video": {
+    "class_type": "CreateVideo",
+    "inputs": {
+      "images": ["decode", 0],
+      "fps": 16.0
+    },
+    "_meta": { "title": "Create Video" }
+  },
+  "save_video": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": ["create_video", 0],
+      "filename_prefix": "video/mcs",
+      "format": "auto",
+      "codec": "auto"
+    },
+    "_meta": { "title": "Save Video" }
+  }
+}

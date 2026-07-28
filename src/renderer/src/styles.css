@@ -1,0 +1,68 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-ink: #0b0f19;
+  --color-panel: #131a2a;
+  --color-panel2: #1a2338;
+  --color-line: #26324d;
+  --color-accent: #6d8dff;
+  --color-accent2: #9f6dff;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  background: var(--color-ink);
+  color: #e6eaf5;
+  font-family: 'Yu Gothic UI', 'Meiryo', 'Segoe UI', system-ui, sans-serif;
+  font-size: 14px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #2c3a5c;
+  border-radius: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@layer components {
+  .card {
+    @apply bg-panel border border-line rounded-xl;
+  }
+
+  .btn-primary,
+  .btn-ghost,
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply bg-accent text-white hover:bg-indigo-400;
+  }
+  .btn-ghost {
+    @apply border border-line bg-transparent hover:bg-panel2;
+  }
+  .btn-danger {
+    @apply bg-rose-600 text-white hover:bg-rose-500;
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-line bg-panel2 px-3 py-2 outline-none focus:border-accent;
+  }
+
+  .label {
+    @apply block text-xs font-semibold text-slate-400 mb-1;
+  }
+
+  .chip {
+    @apply inline-flex items-center rounded-full border border-line bg-panel2 px-3 py-1 text-xs cursor-pointer select-none hover:border-accent transition-colors;
+  }
+  .chip-on {
+    @apply border-accent bg-indigo-500/20 text-indigo-200;
+  }
+}

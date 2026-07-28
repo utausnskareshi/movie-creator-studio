@@ -1,0 +1,103 @@
+{
+  "unet": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "wan2.2_ti2v_5B_fp16.safetensors",
+      "weight_dtype": "default"
+    },
+    "_meta": { "title": "Load Diffusion Model" }
+  },
+  "model_sampling": {
+    "class_type": "ModelSamplingSD3",
+    "inputs": {
+      "model": ["unet", 0],
+      "shift": 8.0
+    },
+    "_meta": { "title": "ModelSamplingSD3" }
+  },
+  "clip": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan",
+      "device": "default"
+    },
+    "_meta": { "title": "Load CLIP" }
+  },
+  "positive": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "",
+      "clip": ["clip", 0]
+    },
+    "_meta": { "title": "CLIP Text Encode (Positive Prompt)" }
+  },
+  "negative": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走",
+      "clip": ["clip", 0]
+    },
+    "_meta": { "title": "CLIP Text Encode (Negative Prompt)" }
+  },
+  "empty_latent": {
+    "class_type": "Wan22ImageToVideoLatent",
+    "inputs": {
+      "vae": ["vae", 0],
+      "width": 1280,
+      "height": 704,
+      "length": 121,
+      "batch_size": 1
+    },
+    "_meta": { "title": "Wan 2.2 Empty Video Latent" }
+  },
+  "sampler_1": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": ["model_sampling", 0],
+      "seed": 0,
+      "steps": 20,
+      "cfg": 5.0,
+      "sampler_name": "uni_pc",
+      "scheduler": "simple",
+      "positive": ["positive", 0],
+      "negative": ["negative", 0],
+      "latent_image": ["empty_latent", 0],
+      "denoise": 1.0
+    },
+    "_meta": { "title": "KSampler" }
+  },
+  "vae": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "wan2.2_vae.safetensors"
+    },
+    "_meta": { "title": "Load VAE" }
+  },
+  "decode": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["sampler_1", 0],
+      "vae": ["vae", 0]
+    },
+    "_meta": { "title": "VAE Decode" }
+  },
+  "create_video": {
+    "class_type": "CreateVideo",
+    "inputs": {
+      "images": ["decode", 0],
+      "fps": 24.0
+    },
+    "_meta": { "title": "Create Video" }
+  },
+  "save_video": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": ["create_video", 0],
+      "filename_prefix": "video/mcs",
+      "format": "auto",
+      "codec": "auto"
+    },
+    "_meta": { "title": "Save Video" }
+  }
+}
