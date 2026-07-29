@@ -59,20 +59,29 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 3点(インストーラー / blockmap / latest.yml)が揃っていなければ失敗させる。
-      # 揃っていないドラフトを公開すると、ダウンロード不能または自動更新不能な
-      # リリースが出回る。
+      # 必須アセットが欠けたドラフトを公開すると、ダウンロード不能(exe 欠落)
+      # または自動更新不能(latest.yml 欠落)なリリースが出回るため失敗させる。
+      # .blockmap は差分ダウンロードの最適化専用で、無い場合 electron-updater は
+      # フルダウンロードにフォールバックする(NsisUpdater の
+      # differentialDownloadInstaller は失敗時 true を返し全体を取得する)ため
+      # 必須にはせず警告のみ。なお別ファイル方式では latest.yml に blockMapSize
+      # が入らないのが正常(埋め込み方式のみ付与される)。
       - name: Verify release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $v = "${{ github.ref_name }}" -replace '^v', ''
-          $names = gh release view "${{ github.ref_name }}" --json assets --jq '.assets[].name'
-          Write-Host "uploaded: $names"
-          foreach ($want in @("Movie-Creator-Studio-Setup-$v.exe", "Movie-Creator-Studio-Setup-$v.exe.blockmap", "latest.yml")) {
+          $names = @(gh release view "${{ github.ref_name }}" --json assets --jq '.assets[].name')
+          Write-Host "uploaded assets:"
+          $names | ForEach-Object { Write-Host "  - $_" }
+          foreach ($want in @("Movie-Creator-Studio-Setup-$v.exe", "latest.yml")) {
             if ($names -notcontains $want) {
-              Write-Error "missing release asset: $want"
+              Write-Error "missing required release asset: $want"
               exit 1
             }
           }
-          Write-Host "all 3 assets present"
+          $bm = "Movie-Creator-Studio-Setup-$v.exe.blockmap"
+          if ($names -notcontains $bm) {
+            Write-Host "::warning::$bm is missing - updates will download the full installer instead of a delta"
+          }
+          Write-Host "required assets present"
