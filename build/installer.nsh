@@ -52,7 +52,7 @@
   ; 最も深い祖先。これより深い(=インストーラーが暗黙に作った)空フォルダは
   ; アンインストールで遡って削除する。ディレクトリページにパスを手入力すると
   ; 親フォルダごとインストーラーが作るため、INSTDIR だけ消しても親が残る
-  ; (実機: C:\MovieCreatorStudioTest が空で残存)。参照ダイアログの
+  ; (実機テストで空フォルダの残存を確認)。参照ダイアログの
   ; 「新しいフォルダーの作成」で作った場合はこの判定時点で実在する=境界側
   ; になり、ユーザー作成フォルダとして正しく保護される。
   Var /GLOBAL mcsPreexistBoundary
@@ -173,8 +173,8 @@
     ; として渡し(NSIS 実測で確認)、un.onInit が SetOutPath $INSTDIR 済みのため、
     ; そのままだと子 cmd.exe が $INSTDIR を CWD として約3秒間掴む。electron-builder
     ; テンプレートはこの直後に RMDir /r $INSTDIR を実行するので、中身は消えても
-    ; フォルダ自体が削除できず空フォルダが残る(実機の C:\MusicCreatorStudioTest で
-    ; 再現。NSIS 実験でも 100% 再現し、この一行で解消することを確認)。
+    ; フォルダ自体が削除できず空フォルダが残る(実機で再現。NSIS 実験でも
+    ; 100% 再現し、この一行で解消することを確認)。
     SetOutPath "$TEMP"
     ExecShell "" "$SYSDIR\cmd.exe" '/c ping -n 4 127.0.0.1 >nul & reg delete "HKCU\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Compatibility Assistant\Store" /v "$INSTDIR\${UNINSTALL_FILENAME}" /f & reg delete "HKCU\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Compatibility Assistant\Store" /v "$INSTDIR\${APP_EXECUTABLE_FILENAME}" /f' SW_HIDE
 
@@ -362,8 +362,8 @@
 
 ; インストーラーが暗黙に作成した「祖先」フォルダの掃除。
 ; ディレクトリページにパスを手入力すると、INSTDIR までの中間フォルダも
-; インストーラーが作成する(実機: 手入力の C:\MovieCreatorStudioTest が
-; 空のまま残存)。インストール時に記録した「実在していた最深の祖先」
+; インストーラーが作成する(実機テストで、手入力した親フォルダが空のまま
+; 残存することを確認)。インストール時に記録した「実在していた最深の祖先」
 ; (McsPreexistingAncestor)まで、空のフォルダだけを RMDir(非再帰)で遡る。
 ; - 値なし(旧版インストール)や境界が INSTDIR の祖先でない場合は何もしない
 ; - ユーザーが後から中間フォルダに置いたファイルがあれば、そこで停止する
