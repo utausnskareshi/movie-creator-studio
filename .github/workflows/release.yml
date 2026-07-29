@@ -7,6 +7,11 @@ on:
 permissions:
   contents: write
 
+# 同じタグで再実行された場合に publish が二重に走らないようにする
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: windows-latest
@@ -16,10 +21,58 @@ jobs:
         with:
           node-version: 24
           cache: npm
+
+      # タグと package.json の version が食い違うと、latest.yml が指すファイル名と
+      # 実ファイル名がずれて自動アップデートが壊れる。ビルド前に止める。
+      - name: Verify tag matches package.json version
+        run: |
+          $pkg = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $tag = "${{ github.ref_name }}" -replace '^v', ''
+          if ($pkg -ne $tag) {
+            Write-Error "tag ${{ github.ref_name }} does not match package.json version $pkg"
+            exit 1
+          }
+          Write-Host "version OK: $pkg"
+
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+
+      # ドラフトを先に確定させる。electron-builder の getOrCreateRelease は
+      # 「一覧取得 → 無ければ作成」なので、環境によっては同一タグのドラフトが
+      # 二重にできうる。ここで1つだけ作っておけば、publish はそれを再利用する。
+      - name: Ensure exactly one draft release exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "${{ github.ref_name }}" 2>$null | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create "${{ github.ref_name }}" --draft --verify-tag `
+              --title "${{ github.ref_name }}" `
+              --notes "Movie Creator Studio ${{ github.ref_name }}"
+          } else {
+            Write-Host "release ${{ github.ref_name }} already exists - reusing it"
+          }
+
       - name: Build installer and publish to GitHub Releases
         run: npm run publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 3点(インストーラー / blockmap / latest.yml)が揃っていなければ失敗させる。
+      # 揃っていないドラフトを公開すると、ダウンロード不能または自動更新不能な
+      # リリースが出回る。
+      - name: Verify release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $v = "${{ github.ref_name }}" -replace '^v', ''
+          $names = gh release view "${{ github.ref_name }}" --json assets --jq '.assets[].name'
+          Write-Host "uploaded: $names"
+          foreach ($want in @("Movie-Creator-Studio-Setup-$v.exe", "Movie-Creator-Studio-Setup-$v.exe.blockmap", "latest.yml")) {
+            if ($names -notcontains $want) {
+              Write-Error "missing release asset: $want"
+              exit 1
+            }
+          }
+          Write-Host "all 3 assets present"
