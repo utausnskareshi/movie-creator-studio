@@ -11,6 +11,8 @@ import {
   useGenForm
 } from '../../components/gen/common'
 import { clampInt } from '../../lib/num'
+import { packReadyById } from '../../lib/ready'
+import { useApp } from '../../store'
 
 type Tab = 't2v' | 'i2v' | 'r2v'
 
@@ -69,6 +71,7 @@ function RefMediaList({
 }
 
 export default function MinimaxScreen(): React.JSX.Element {
+  const { setupStatus, catalog } = useApp()
   const form = useGenForm('minimaxh3', 't2v')
   const [tab, setTab] = useState<Tab>('t2v')
   const [steps, setSteps] = useState(20)
@@ -103,11 +106,20 @@ export default function MinimaxScreen(): React.JSX.Element {
       ? { lastFrameImagePath: lastFramePath }
       : {}
 
-  const extraDisabledReason = audioNeedsVisual
-    ? '参照音声には画像または動画の同伴が必要です(人物画像を1枚追加してください)'
-    : isR2V && totalRefs === 0 && !form.finalPrompt
-      ? 'プロンプトを入力してください(参照なしでも生成できますが、R2Vは参照ファイルの追加が本領です)'
-      : null
+  // タブごとに使うチェックポイントは別パック(WanFun の variantMissing と同型):
+  // 後出しの MISSING_MODELS ダイアログではなく、ボタン時点で理由を出す
+  const variantMissing = isR2V
+    ? !packReadyById('minimaxh3_ref2va', setupStatus, catalog)
+    : !packReadyById('minimaxh3_fl2va', setupStatus, catalog)
+  const extraDisabledReason = variantMissing
+    ? isR2V
+      ? 'R2V用モデルが未ダウンロードです。セットアップ画面から「MiniMax H3 リファレンス(R2V)」を導入してください'
+      : 'モデルが未ダウンロードです。セットアップ画面から「MiniMax H3(標準 T2V/I2V)」を導入してください'
+    : audioNeedsVisual
+      ? '参照音声には画像または動画の同伴が必要です(人物画像を1枚追加してください)'
+      : isR2V && totalRefs === 0 && !form.finalPrompt
+        ? 'プロンプトを入力してください(参照なしでも生成できますが、R2Vは参照ファイルの追加が本領です)'
+        : null
 
   /** insert a <Picture n> style tag at the end of the prompt */
   function insertTag(tag: string): void {
