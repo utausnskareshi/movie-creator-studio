@@ -10,6 +10,7 @@ export type ModelFamily =
   | 'cosmos'
   | 'ltx2'
   | 'wanfun'
+  | 'minimaxh3'
 
 export type Language = 'ja' | 'en'
 
@@ -58,6 +59,8 @@ export interface ComponentStatus {
   installed: boolean
   version?: string
   path?: string
+  /** version this app release expects (set for comfyui) — mismatch = 更新あり */
+  pinnedVersion?: string
 }
 
 export interface SetupStatus {
@@ -156,6 +159,14 @@ export interface GenBase {
   inputAudioPath?: string
   /** Control video absolute path (Wan Fun Control) */
   controlVideoPath?: string
+  /** MiniMax H3 FL2VA: optional LAST keyframe (inputImagePath is the first) */
+  lastFrameImagePath?: string
+  /** MiniMax H3 Ref2VA: reference images, model limit 9 */
+  refImagePaths?: string[]
+  /** MiniMax H3 Ref2VA: reference videos (2-15s each), model limit 3 */
+  refVideoPaths?: string[]
+  /** MiniMax H3 Ref2VA: standalone reference audio (2-15s each), model limit 3 */
+  refAudioPaths?: string[]
 }
 
 export interface Wan22Options {
@@ -216,6 +227,24 @@ export interface Ltx2Options {
   submode: 'video' | 'avatar'
 }
 
+export interface MinimaxH3Options {
+  /**
+   * 'fl2va' = first/last-frame model (T2V and I2V with optional last frame).
+   * 'ref2va' = omni-reference model (images<=9 / videos<=3 / audios<=3,
+   * referenced from the prompt as <Picture i> / <Video k> / <Audio j>).
+   * Official templates use BasicGuider (no CFG / no negative prompt) with
+   * res_multistep + simple scheduling.
+   */
+  variant: 'fl2va' | 'ref2va'
+  steps: number
+  /**
+   * Ref2VA reference sizing: 'match' scales refs to the generation's pixel
+   * area (faster), 'max' keeps up to a 2048px short edge for best identity
+   * fidelity (reference tokens ride every step — several times slower).
+   */
+  refImageSize: 'match' | 'max'
+}
+
 export type ControlType = 'canny' | 'pose' | 'depth'
 
 export interface WanFunOptions {
@@ -236,6 +265,7 @@ export type FamilyOptions =
   | { family: 'cosmos'; cosmos: CosmosOptions }
   | { family: 'ltx2'; ltx2: Ltx2Options }
   | { family: 'wanfun'; wanfun: WanFunOptions }
+  | { family: 'minimaxh3'; minimaxh3: MinimaxH3Options }
 
 export type GenerationRequest = GenBase & { options: FamilyOptions }
 

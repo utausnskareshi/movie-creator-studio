@@ -367,3 +367,40 @@ Revisit if/when ComfyUI ships native ID-LoRA nodes.
    integrity) + verbatim source cross-check + HF filename existence. Not an end-to-end render.
 5. All referenced model filenames were confirmed present on HuggingFace (LTX via the HF tree API; Wan via the
    templates' own embedded `models[].url` download metadata, same repos the app already uses).
+
+
+---
+
+# Workflow conversion notes — MiniMax H3 (v1.1.0)
+
+Source of truth: ComfyUI v0.30.0 (comfy_extras/nodes_minimax_h3.py, read from the
+v0.30.0 source zip) + the official templates video_minimax_h3_{t2v,i2v,r2v}.json
+from Comfy-Org/workflow_templates (the r2v template is flat and exposes the full
+chain; t2v/i2v ship as a packed subgraph whose widgets confirm the same defaults).
+
+Chain (all three templates):
+UNETLoader(pruned int8_convrot, weight_dtype default)
++ CLIPLoader(qwen3vl nvfp4_awq, type "minimax", device default)
++ VAELoader(video fp16) + VAELoader(audio fp32)
+-> MiniMaxH3ImageToVideo (t2va/fl2va: prompt/width/height/length,
+   optional first_frame/last_frame)  |  MiniMaxH3ReferenceToVideo (ref2va:
+   + audio_vae, ref_image_size match|max, autogrow inputs ref_image_1..9 /
+   ref_video_1..3 / ref_video_audio_N / ref_audio_1..3)
+-> RandomNoise -> BasicGuider (NO cfg, NO negative) -> SamplerCustomAdvanced
+   with KSamplerSelect(res_multistep) + BasicScheduler(simple, 20 steps, denoise 1)
+-> same latent into VAEDecode (video vae) and VAEDecodeAudio (audio vae)
+-> CreateVideo(fps 24, audio wired) -> SaveVideo.
+
+Node-source facts encoded in the app:
+- frame grid 17k+5 (align_frame_count), trained range ~124-362 @24fps
+  -> familyMeta presets [124,192,260,362], graphs.alignMinimaxFrames snaps.
+- canvas: multiples of 32, 768 short edge, area cap 768*1344
+  -> resolution presets 1344x768 / 768x1344 / 768x768 / 1024x768 / 768x1024.
+- MiniMaxH3SigmaShift exists (video 12 / audio 3 defaults) but the official
+  templates do NOT insert it — we follow the templates.
+- ref videos: node requires >=5 frames, aligns down to 17k+5, assumes 24fps
+  timing; app pre-transcodes refs to 24fps/<=15s/no-audio mp4 (prepareRefVideo)
+  and passes soundtrack-less videos; lip-sync audio goes through ref_audio_N
+  (paired ref_video_audio_N inputs deliberately unused).
+- audio refs REQUIRE an image/video companion (HF model card) — enforced in
+  sanitizeRequest and in the screen.

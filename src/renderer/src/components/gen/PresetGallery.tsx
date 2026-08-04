@@ -8,6 +8,7 @@ import { PRESETS as COGVIDEOX } from '../../data/presets/cogvideox'
 import { PRESETS as COSMOS } from '../../data/presets/cosmos'
 import { PRESETS as LTX2 } from '../../data/presets/ltx2'
 import { PRESETS as WANFUN } from '../../data/presets/wanfun'
+import { PRESETS as MINIMAXH3 } from '../../data/presets/minimaxh3'
 
 const ALL: Record<ModelFamily, PromptPreset[]> = {
   animegen: ANIMEGEN,
@@ -16,7 +17,8 @@ const ALL: Record<ModelFamily, PromptPreset[]> = {
   cogvideox: COGVIDEOX,
   cosmos: COSMOS,
   ltx2: LTX2,
-  wanfun: WANFUN
+  wanfun: WANFUN,
+  minimaxh3: MINIMAXH3
 }
 
 export default function PresetGallery({
@@ -62,7 +64,9 @@ export default function PresetGallery({
                     ? 'I2V: 画像を動かす'
                     : mode === 'avatar'
                       ? '喋るアバター'
-                      : 'T2V: 文章から生成'
+                      : mode === 'r2v'
+                        ? 'R2V: リファレンス生成'
+                        : 'T2V: 文章から生成'
                 }向け`
               : ''})
           </div>

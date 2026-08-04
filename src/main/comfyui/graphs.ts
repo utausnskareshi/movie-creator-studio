@@ -97,6 +97,66 @@ export interface InputRefs {
   image?: string | null
   audio?: string | null
   controlVideo?: string | null
+  /** MiniMax H3 FL2VA: uploaded last-keyframe filename (optional) */
+  lastFrame?: string | null
+  /** MiniMax H3 Ref2VA: uploaded reference media, in user order */
+  refImages?: string[]
+  refVideos?: string[]
+  refAudios?: string[]
+}
+
+/** MiniMax H3 frame grid: valid lengths are 17k+5 (nodes_minimax_h3.py). */
+export function alignMinimaxFrames(n: number): number {
+  let v = Math.max(5, Math.round(n))
+  while (v % 17 !== 5) v++
+  return v
+}
+
+/**
+ * Wire Ref2VA reference media as LoadImage / LoadVideo+GetVideoComponents /
+ * LoadAudio nodes feeding the autogrow inputs ref_image_N / ref_video_N /
+ * ref_audio_N. Reference order fixed by the node: images, then videos, then
+ * standalone audio — the prompt refers to them as <Picture i>/<Video k>/<Audio j>.
+ * Uploaded ref videos are pre-transcoded to soundless 24fps mp4, so the
+ * paired ref_video_audio_N inputs are deliberately not used (lip-sync audio
+ * goes through standalone <Audio j> refs instead).
+ */
+function wireMinimaxRefs(graph: WorkflowGraph, refs: InputRefs): void {
+  const cond = graph['cond']
+  if (!cond) throw new Error('workflow template missing node "cond"')
+  ;(refs.refImages ?? []).forEach((name, i) => {
+    const id = `ref_img_${i + 1}`
+    graph[id] = {
+      class_type: 'LoadImage',
+      inputs: { image: name },
+      _meta: { title: `Reference Image ${i + 1} (<Picture ${i + 1}>)` }
+    }
+    cond.inputs[`ref_image_${i + 1}`] = [id, 0]
+  })
+  ;(refs.refVideos ?? []).forEach((name, i) => {
+    const loadId = `ref_vid_load_${i + 1}`
+    const compId = `ref_vid_comp_${i + 1}`
+    graph[loadId] = {
+      class_type: 'LoadVideo',
+      inputs: { file: name },
+      _meta: { title: `Reference Video ${i + 1} (<Video ${i + 1}>)` }
+    }
+    graph[compId] = {
+      class_type: 'GetVideoComponents',
+      inputs: { video: [loadId, 0] },
+      _meta: { title: `Video ${i + 1} frames` }
+    }
+    cond.inputs[`ref_video_${i + 1}`] = [compId, 0]
+  })
+  ;(refs.refAudios ?? []).forEach((name, i) => {
+    const id = `ref_aud_${i + 1}`
+    graph[id] = {
+      class_type: 'LoadAudio',
+      inputs: { audio: name },
+      _meta: { title: `Reference Audio ${i + 1} (<Audio ${i + 1}>)` }
+    }
+    cond.inputs[`ref_audio_${i + 1}`] = [id, 0]
+  })
 }
 
 export function buildGraph(
@@ -231,6 +291,23 @@ export function buildGraph(
       trySetInput(graph, 'trim_audio', 'duration', Math.max(1, Math.round(((req.frames - 1) / fps) * 100) / 100))
       break
     }
+    case 'minimaxh3': {
+      const m = o.minimaxh3
+      fps = 24
+      // BasicGuider chain (guidance-embedded pruned checkpoints): no CFG and
+      // no negative prompt — the prompt lives on the conditioning node itself
+      if (m.variant === 'ref2va') {
+        graph = loadTemplate('minimax_h3_r2v')
+        setInput(graph, 'cond', 'ref_image_size', m.refImageSize)
+      } else {
+        graph = loadTemplate(req.mode === 'i2v' ? 'minimax_h3_i2v' : 'minimax_h3_t2v')
+      }
+      setInput(graph, 'cond', 'width', req.width)
+      setInput(graph, 'cond', 'height', req.height)
+      setInput(graph, 'cond', 'length', alignMinimaxFrames(req.frames))
+      trySetInput(graph, 'scheduler', 'steps', m.steps)
+      break
+    }
     case 'wanfun': {
       const w = o.wanfun
       graph = loadTemplate(w.size === '5b' ? 'wanfun_5b_control' : 'wanfun_14b_control')
@@ -258,12 +335,17 @@ export function buildGraph(
   setPrompts(graph, promptText, req.negative)
   setSeed(graph, req.seed)
   setFilenamePrefix(graph, jobId)
+  // MiniMax H3 has no CLIPTextEncode nodes — the prompt is an input of the
+  // conditioning node (and there is no negative path at all)
+  if (o.family === 'minimaxh3') setInput(graph, 'cond', 'prompt', promptText)
 
   // wire input media by what the chosen template actually needs.
   // wanfun's reference image is OPTIONAL (Wan22FunControlToVideo.ref_image is
   // an optional input) — the control video alone can drive the generation.
+  // minimaxh3 ref2va runs as a t2v-mode flow (references are its own inputs).
   const requiresImage =
-    (req.mode === 'i2v' && o.family !== 'wanfun') ||
+    (req.mode === 'i2v' && o.family !== 'wanfun' &&
+      !(o.family === 'minimaxh3' && o.minimaxh3.variant === 'ref2va')) ||
     (o.family === 'ltx2' && o.ltx2.submode === 'avatar')
   if (requiresImage) {
     if (!imageRef) throw new Error('この生成には入力画像が必要です')
@@ -283,6 +365,19 @@ export function buildGraph(
   if (o.family === 'wanfun') {
     if (!inputs.controlVideo) throw new Error('Fun Control には制御動画が必要です')
     setInput(graph, 'load_video', 'file', inputs.controlVideo)
+  }
+  if (o.family === 'minimaxh3') {
+    if (o.minimaxh3.variant === 'fl2va') {
+      // optional LAST keyframe (i2v template ships with the node wired in)
+      if (req.mode === 'i2v' && inputs.lastFrame) {
+        setInput(graph, 'load_image_last', 'image', inputs.lastFrame)
+      } else if (hasNode(graph, 'load_image_last')) {
+        removeNode(graph, 'load_image_last')
+        delete graph['cond'].inputs['last_frame']
+      }
+    } else {
+      wireMinimaxRefs(graph, inputs)
+    }
   }
 
   return { graph, fps }

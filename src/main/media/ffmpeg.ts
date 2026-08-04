@@ -190,6 +190,30 @@ export async function prepareControlVideo(
   if (r.code !== 0) throw new Error(`制御動画の変換に失敗しました (ffmpeg exit ${r.code})`)
 }
 
+/**
+ * Normalize a REFERENCE video for MiniMax H3 Ref2VA: 24fps (the node treats
+ * frames as 24fps timing), keep aspect (the node adapts its own canvas per
+ * reference — no crop), shrink only (short edge <= 768 keeps upload and
+ * Qwen-side sampling cheap), cap 15s (model limit), strip audio (lip-sync
+ * audio goes through the standalone <Audio j> reference inputs instead).
+ */
+export async function prepareRefVideo(src: string, dest: string, maxSec = 15): Promise<void> {
+  const vf = `fps=24,scale='if(gt(iw,ih),-2,min(768,iw))':'if(gt(iw,ih),min(768,ih),-2)':flags=lanczos`
+  const r = await runFfmpeg(
+    [
+      '-i', src,
+      '-t', maxSec.toFixed(2),
+      '-an',
+      '-vf', vf,
+      '-c:v', 'libx264', '-crf', '20', '-pix_fmt', 'yuv420p',
+      '-movflags', '+faststart',
+      dest
+    ],
+    { timeoutMs: 180_000 }
+  )
+  if (r.code !== 0) throw new Error(`参照動画の変換に失敗しました (ffmpeg exit ${r.code})`)
+}
+
 export async function makeThumbnail(videoPath: string, outPath: string, atSec = 0): Promise<void> {
   const r = await runFfmpeg(
     ['-ss', String(atSec), '-i', videoPath, '-frames:v', '1', '-vf', 'scale=480:-2', outPath],

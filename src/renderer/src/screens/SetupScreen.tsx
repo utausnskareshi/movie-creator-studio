@@ -279,12 +279,23 @@ export default function SetupScreen(): React.JSX.Element {
         <div className="font-bold text-sm">③ エンジンとツール</div>
         <ComponentRow
           name="ComfyUI(生成エンジン)"
-          desc="GPL-3.0 / 動作検証済みバージョンに固定(約2GBダウンロード・展開後約7GB)"
+          desc={`GPL-3.0 / 動作検証済みバージョンに固定(約2GBダウンロード・展開後約7GB)${
+            setupStatus?.comfyui.installed && setupStatus.comfyui.version
+              ? ` / 導入済み: ${setupStatus.comfyui.version}`
+              : ''
+          }`}
           installed={!!setupStatus?.comfyui.installed}
           busy={!!busyKeys['install:comfyui']}
           disabled={anyInstallBusy || toolInstallBlocked}
           progress={downloads['comfyui']}
           onInstall={() => void runInstall('comfyui')}
+          updateLabel={
+            setupStatus?.comfyui.installed &&
+            setupStatus.comfyui.pinnedVersion &&
+            setupStatus.comfyui.version !== setupStatus.comfyui.pinnedVersion
+              ? `エンジンを更新 (${setupStatus.comfyui.pinnedVersion})`
+              : undefined
+          }
         />
         <ComponentRow
           name="ffmpeg / ffprobe(編集・書き出し)"
@@ -372,15 +383,23 @@ export default function SetupScreen(): React.JSX.Element {
           const overall = packOverall(pack)
           // preconditions: the button is only enabled when the download can succeed
           const needsComfy = pack.requiresCustomNodes.length > 0 && !setupStatus?.comfyui.installed
+          // MiniMax H3 nodes ship with ComfyUI v0.30+ — an older pinned engine
+          // would reject every generation at /prompt validation
+          const needsEngineUpdate =
+            pack.family === 'minimaxh3' &&
+            !!setupStatus?.comfyui.installed &&
+            setupStatus.comfyui.version !== setupStatus.comfyui.pinnedVersion
           const missingBytes = packMissingBytes(pack)
           const diskShort = !!dataDisk && dataDisk.freeGB * 1024 ** 3 < missingBytes * 1.05
           const blockReason = vramBlocked(pack)
             ? `このPCのVRAM(${vramGB}GB)では動作対象外です(必要: ${pack.minVramGB}GB以上)。上のスイッチをOFFにすると解除できます`
-            : needsComfy
+            : needsComfy || (pack.family === 'minimaxh3' && !setupStatus?.comfyui.installed)
               ? '先に ComfyUI(生成エンジン)のインストールが必要です'
-              : diskShort
-                ? 'ディスクの空き容量が不足しています'
-                : null
+              : needsEngineUpdate
+                ? 'このモデルには新しいエンジンが必要です。「③ エンジンとツール」の「エンジンを更新」を先に実行してください'
+                : diskShort
+                  ? 'ディスクの空き容量が不足しています'
+                  : null
           return (
             <div key={pack.id} className="card p-4">
               <div className="flex items-start gap-4">
@@ -609,6 +628,8 @@ function ComponentRow(props: {
   disabled: boolean
   progress?: DownloadProgress
   onInstall: () => void
+  /** shown when installed but an update to the pinned version is available */
+  updateLabel?: string
 }): React.JSX.Element {
   const showProgress = props.progress && props.progress.status !== 'done' && props.busy
   return (
@@ -618,7 +639,19 @@ function ComponentRow(props: {
           <div className="text-sm font-medium">{props.name}</div>
           <div className="text-[11px] text-slate-500">{props.desc}</div>
         </div>
-        {props.installed ? (
+        {props.installed && props.updateLabel && !props.busy ? (
+          <>
+            <span className="text-emerald-400 text-sm">✓ 導入済み</span>
+            <button
+              className="btn-primary text-xs"
+              disabled={props.disabled}
+              title={props.disabled ? '他の処理が完了するまでお待ちください' : undefined}
+              onClick={props.onInstall}
+            >
+              {props.updateLabel}
+            </button>
+          </>
+        ) : props.installed && !props.busy ? (
           <span className="text-emerald-400 text-sm">✓ 導入済み</span>
         ) : (
           <button

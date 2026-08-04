@@ -47,6 +47,17 @@
 - **配布元**: https://huggingface.co/alibaba-pai/Wan2.2-Fun-5B-Control / https://huggingface.co/alibaba-pai/Wan2.2-Fun-A14B-Control(ComfyUI再パッケージ: Comfy-Org/Wan_2.2_ComfyUI_Repackaged)
 - 備考: ポーズ/深度の制御には comfyui_controlnet_aux(Apache-2.0)を併用
 
+## MiniMax H3 (MiniMax)
+- **ライセンス**: MiniMax H3 Community License
+- **商用利用**: 条件付き可(**年間収益2,000万米ドル超**の事業者は MiniMax の事前書面許諾が必要。商用製品はUIに「MiniMax H3」を明示する義務)
+- **重要な制限**:
+  - **EU・英国・韓国・米国では利用不可**(ライセンスの適用地域外)
+  - 生成物を他のAIモデル(競合モデル)の学習・改善に使用することは禁止
+  - 生成物へのAI生成識別子の付与義務あり(SNS投稿時は各プラットフォームの開示設定を)
+  - Acceptable Use Policy による禁止用途(虚偽情報・なりすまし・軍事利用等)
+- **配布元**: https://huggingface.co/MiniMaxAI/MiniMax-H3(ComfyUI再パッケージ: https://huggingface.co/Comfy-Org/MiniMax-H3)
+- 備考: 公開されているのは768pクラスの H3-Base(FL2VA / Ref2VA)。2K生成モジュール(H3-Regenerate-2K)は未公開のため本アプリは対象外
+
 ---
 
 ## エンジン・ツール(参考)

@@ -13,6 +13,7 @@ import CogVideoScreen from './screens/gen/CogVideoScreen'
 import CosmosScreen from './screens/gen/CosmosScreen'
 import Ltx2Screen from './screens/gen/Ltx2Screen'
 import WanFunScreen from './screens/gen/WanFunScreen'
+import MinimaxScreen from './screens/gen/MinimaxScreen'
 import LibraryScreen from './screens/LibraryScreen'
 import EditorScreen from './screens/EditorScreen'
 import SettingsScreen from './screens/SettingsScreen'
@@ -92,6 +93,7 @@ export default function App(): React.JSX.Element {
           {screen === 'cosmos' && <CosmosScreen />}
           {screen === 'ltx2' && <Ltx2Screen />}
           {screen === 'wanfun' && <WanFunScreen />}
+          {screen === 'minimaxh3' && <MinimaxScreen />}
           {screen === 'library' && <LibraryScreen />}
           {screen === 'editor' && <EditorScreen />}
           {screen === 'settings' && <SettingsScreen />}

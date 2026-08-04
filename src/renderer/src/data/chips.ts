@@ -280,6 +280,48 @@ export const PROMPT_CHIPS: Record<ModelFamily, ChipCategory[]> = {
         { ja: 'ソフトな自然光', en: 'soft natural daylight' }
       ]
     }
+  ],
+  minimaxh3: [
+    {
+      title: '音(同時生成される音声)',
+      chips: [
+        { ja: 'セリフあり(内容はプロンプトに)', en: 'characters speak clearly with natural voices' },
+        { ja: 'BGMあり', en: 'with fitting background music' },
+        { ja: '環境音', en: 'rich ambient sound design' },
+        { ja: '効果音を同期', en: 'impactful sound effects synced to the action' },
+        { ja: '静かな場面', en: 'quiet scene with subtle ambience' }
+      ]
+    },
+    {
+      title: 'カメラ・演出',
+      chips: [
+        { ja: 'マルチショット構成', en: 'multi-shot sequence with clean cuts' },
+        { ja: 'ワンカット長回し', en: 'single continuous take' },
+        { ja: 'ドリーイン', en: 'slow dolly-in' },
+        { ja: '手持ちカメラ', en: 'handheld camera feel' },
+        { ja: 'シネマティック', en: 'cinematic lighting and color grade' }
+      ]
+    },
+    {
+      title: 'スタイル',
+      chips: [
+        { ja: '実写風', en: 'realistic live-action look' },
+        { ja: 'アニメ調', en: 'anime style' },
+        { ja: 'CM映像風', en: 'polished commercial film look' },
+        { ja: 'ドキュメンタリー風', en: 'documentary style' },
+        { ja: 'ミュージックビデオ調', en: 'stylish music video look' }
+      ]
+    },
+    {
+      title: 'リファレンス参照(R2Vモード)',
+      chips: [
+        { ja: '画像1の人物が主役', en: 'the person in <Picture 1> is the main character' },
+        { ja: '画像1の画風で', en: 'in the art style of <Picture 1>' },
+        { ja: '音声1に合わせて歌う', en: 'the character sings along to <Audio 1> with accurate lip sync' },
+        { ja: '音声1に合わせて話す', en: 'the character speaks the dialogue in <Audio 1> with accurate lip sync' },
+        { ja: '動画1の動きを再現', en: 'reproduce the motion of <Video 1>' }
+      ]
+    }
   ]
 }
 
@@ -349,6 +391,17 @@ export const FAMILY_INTRO: Record<ModelFamily, { title: string; desc: string; ti
       'プロンプトには「動き」ではなく被写体の見た目・服装・背景・画風を書きます',
       '参照画像(任意)で1フレーム目の見た目を指定できます',
       '線画/ポーズ/深度は制御動画から自動抽出されます(抽出モデルはアプリが導入)'
+    ]
+  },
+  minimaxh3: {
+    title: 'MiniMax H3 — 映像と音声を同時生成するオムニモーダル',
+    desc: 'テキスト・画像・動画・音声を自由に組み合わせて入力し、音声付き動画(最大約15秒・24fps・ステレオ音声)を生成します。歌声+人物画像のリップシンクや、参照画像による登場人物指定が得意です。',
+    tips: [
+      'プロンプトには映像だけでなく「音」(セリフ内容・音楽・効果音)も書きます',
+      'リファレンス(R2V)では <Picture 1> <Video 1> <Audio 1> のタグで参照ファイルをプロンプトから指定します(タグ挿入ボタン利用)',
+      '歌わせる/喋らせるには: R2Vで人物画像+音声を追加し「<Picture 1>の人物が<Audio 1>に合わせて歌う」のように書きます',
+      '音声参照には画像または動画の同伴が必須です(音声だけでは生成できません)',
+      '33Bの大型モデルのため生成には時間がかかります(初回はモデルロードで数分止まって見えますが正常です)'
     ]
   }
 }

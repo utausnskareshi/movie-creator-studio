@@ -19,6 +19,7 @@ const NAV: Array<{
   { id: 'cosmos', label: 'CosmoVideo', icon: '🚁', family: 'cosmos' },
   { id: 'ltx2', label: 'LTX-2.3 (音声)', icon: '🎵', family: 'ltx2' },
   { id: 'wanfun', label: 'Fun Control', icon: '🎛️', family: 'wanfun' },
+  { id: 'minimaxh3', label: 'MiniMax H3', icon: '🎭', family: 'minimaxh3' },
   { id: 'library', label: 'ライブラリ', icon: '🗂️', section: '管理' },
   { id: 'editor', label: '編集・書き出し', icon: '✂️', needsFfmpeg: true },
   { id: 'settings', label: '設定', icon: '⚙️', section: 'その他' },

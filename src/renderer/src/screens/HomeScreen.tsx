@@ -11,7 +11,8 @@ const GEN_CARDS: Array<{ family: ModelFamily; screen: Screen; icon: string; catc
   { family: 'cogvideox', screen: 'cogvideox', icon: '🧍', catch: 'お気に入りのキャラクター画像を、顔を変えずに動かしたい' },
   { family: 'cosmos', screen: 'cosmos', icon: '🚁', catch: 'ドローン空撮や、立体感のある圧倒的な背景映像を作りたい' },
   { family: 'ltx2', screen: 'ltx2', icon: '🎵', catch: '動画と「音声」を完全同期させ、MVや喋るAIアバターを作りたい' },
-  { family: 'wanfun', screen: 'wanfun', icon: '🎛️', catch: '線画やポーズを指定して、思い通りの動きをさせたい' }
+  { family: 'wanfun', screen: 'wanfun', icon: '🎛️', catch: '線画やポーズを指定して、思い通りの動きをさせたい' },
+  { family: 'minimaxh3', screen: 'minimaxh3', icon: '🎭', catch: '歌声からリップシンク動画を作りたい・画像や音声を組み合わせて音付き動画にしたい' }
 ]
 
 export default function HomeScreen(): React.JSX.Element {
@@ -32,7 +33,7 @@ export default function HomeScreen(): React.JSX.Element {
       <div>
         <h1 className="text-xl font-bold">Movie Creator Studio</h1>
         <p className="text-sm text-slate-400 mt-1">
-          7つの動画生成AIをローカルで — 生成からSNS書き出しまでオールインワン
+          8つの動画生成AIをローカルで — 生成からSNS書き出しまでオールインワン
         </p>
       </div>
 

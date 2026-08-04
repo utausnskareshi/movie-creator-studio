@@ -8,7 +8,7 @@ import { buildGraph, type InputRefs } from '../comfyui/graphs'
 import { engineOutputDir, libraryDir, modelsDir, tempDir, thumbsDir } from '../core/paths'
 import { allModelFiles } from '../models/registry'
 import { library } from '../library/store'
-import { ffmpegAvailable, fitPadBlackImage, makeThumbnail, prepareControlVideo, probe, toWav48k } from '../media/ffmpeg'
+import { ffmpegAvailable, fitPadBlackImage, makeThumbnail, prepareControlVideo, prepareRefVideo, probe, toWav48k } from '../media/ffmpeg'
 
 type JobCb = (job: JobInfo) => void
 
@@ -56,6 +56,12 @@ export function requiredFileIds(req: GenerationRequest): string[] {
             'wan_2.1_vae',
             ...(o.wanfun.lightning ? ['wan22_i2v_lightx2v_high', 'wan22_i2v_lightx2v_low'] : [])
           ]
+    case 'minimaxh3': {
+      const shared = ['minimax_h3_te_nvfp4', 'minimax_h3_video_vae', 'minimax_h3_audio_vae']
+      return o.minimaxh3.variant === 'ref2va'
+        ? ['minimax_h3_ref2va', ...shared]
+        : ['minimax_h3_fl2va', ...shared]
+    }
   }
 }
 
@@ -94,6 +100,29 @@ function sanitizeRequest(req: GenerationRequest): void {
   if (!intIn(req.seed, -1, 2147483647)) throw new Error(`シード値が不正です: ${req.seed}`)
   if (req.prompt.length > 8000) throw new Error('プロンプトが長すぎます(8000文字以内)')
   if (req.negative.length > 4000) throw new Error('ネガティブプロンプトが長すぎます(4000文字以内)')
+
+  // MiniMax H3 Ref2VA reference caps (model limits: 9 images / 3 videos /
+  // 3 audios, 12 files total; audio refs need at least one visual ref)
+  if (fam === 'minimaxh3') {
+    const imgs = req.refImagePaths ?? []
+    const vids = req.refVideoPaths ?? []
+    const auds = req.refAudioPaths ?? []
+    const strOk = (a: string[]): boolean => a.every((p) => typeof p === 'string' && p.length > 0)
+    if (!strOk(imgs) || !strOk(vids) || !strOk(auds)) {
+      throw new Error('参照ファイルのパスが不正です')
+    }
+    if (imgs.length > 9) throw new Error('参照画像は最大9枚です')
+    if (vids.length > 3) throw new Error('参照動画は最大3本です')
+    if (auds.length > 3) throw new Error('参照音声は最大3つです')
+    if (imgs.length + vids.length + auds.length > 12) {
+      throw new Error('参照ファイルは合計12個までです')
+    }
+    if (auds.length > 0 && imgs.length + vids.length === 0) {
+      throw new Error(
+        '参照音声には画像または動画の同伴が必要です(例: 歌声+人物画像でリップシンク)'
+      )
+    }
+  }
 }
 
 export function missingFiles(req: GenerationRequest): string[] {
@@ -300,6 +329,58 @@ class JobQueue {
       }
       if (this.cancelledEarly(jobId)) return
 
+      // MiniMax H3: optional last keyframe (FL2VA) and reference media (Ref2VA)
+      if (job.request.options.family === 'minimaxh3') {
+        if (job.request.lastFrameImagePath && job.request.mode === 'i2v') {
+          this.patch(jobId, { progressText: '最終フレーム画像アップロード中…' })
+          refs.lastFrame = await client.uploadImage(job.request.lastFrameImagePath)
+        }
+        const imgs = job.request.refImagePaths ?? []
+        const vids = job.request.refVideoPaths ?? []
+        const auds = job.request.refAudioPaths ?? []
+        if (imgs.length + vids.length + auds.length > 0) {
+          mkdirSync(tempDir(), { recursive: true })
+          refs.refImages = []
+          refs.refVideos = []
+          refs.refAudios = []
+          for (let i = 0; i < imgs.length; i++) {
+            this.patch(jobId, { progressText: `参照画像 ${i + 1}/${imgs.length} アップロード中…` })
+            refs.refImages.push(await client.uploadImage(imgs[i]))
+            if (this.cancelledEarly(jobId)) return
+          }
+          for (let i = 0; i < vids.length; i++) {
+            // 24fps・15秒上限・音声なしへ正規化(音声は <Audio j> 参照で渡す)
+            this.patch(jobId, { progressText: `参照動画 ${i + 1}/${vids.length} を変換中…` })
+            let up = vids[i]
+            try {
+              const mp4 = join(tempDir(), `refv_${jobId}_${i + 1}.mp4`)
+              await prepareRefVideo(vids[i], mp4, 15)
+              up = mp4
+            } catch {
+              // fall back to the raw file (LoadVideo handles common mp4/mov)
+            }
+            this.patch(jobId, { progressText: `参照動画 ${i + 1}/${vids.length} アップロード中…` })
+            refs.refVideos.push(await client.uploadInputFile(up))
+            if (this.cancelledEarly(jobId)) return
+          }
+          for (let i = 0; i < auds.length; i++) {
+            this.patch(jobId, { progressText: `参照音声 ${i + 1}/${auds.length} を変換中…` })
+            let up = auds[i]
+            try {
+              const wav = join(tempDir(), `refa_${jobId}_${i + 1}.wav`)
+              await toWav48k(auds[i], wav, 15)
+              up = wav
+            } catch {
+              // fall back to the raw file
+            }
+            this.patch(jobId, { progressText: `参照音声 ${i + 1}/${auds.length} アップロード中…` })
+            refs.refAudios.push(await client.uploadInputFile(up))
+            if (this.cancelledEarly(jobId)) return
+          }
+        }
+      }
+      if (this.cancelledEarly(jobId)) return
+
       const { graph, fps } = buildGraph(job.request, jobId, refs)
 
       let previewAt = 0
@@ -484,13 +565,18 @@ class JobQueue {
     } finally {
       this.currentJobId = null
       this.currentPromptId = null
-      // per-job scratch files (fitted image / converted audio / control video)
-      // used to accumulate under work/tmp for the life of the install
-      for (const f of [
+      // per-job scratch files (fitted image / converted audio / control video /
+      // minimax reference media) used to accumulate under work/tmp
+      const scratch = [
         join(tempDir(), `i2v_${jobId}.png`),
         join(tempDir(), `audio_${jobId}.wav`),
         join(tempDir(), `ctrl_${jobId}.mp4`)
-      ]) {
+      ]
+      for (let i = 1; i <= 3; i++) {
+        scratch.push(join(tempDir(), `refv_${jobId}_${i}.mp4`))
+        scratch.push(join(tempDir(), `refa_${jobId}_${i}.wav`))
+      }
+      for (const f of scratch) {
         try {
           rmSync(f, { force: true })
         } catch {

@@ -85,6 +85,64 @@ const T2V_LORA_LOW: ModelFileSpec = {
   bytes: 1.23 * GB
 }
 
+// --- MiniMax H3 (Comfy-Org repackage; exact byte sizes from the HF file API,
+// downloads verify against LFS sha256 at runtime as usual) -------------------
+// Official ComfyUI template stack: pruned int8_convrot DiT + nvfp4_awq
+// text encoder + fp16 video VAE + fp32 audio VAE.
+
+const MINIMAX_H3_FL2VA: ModelFileSpec = {
+  id: 'minimax_h3_fl2va',
+  repo: 'Comfy-Org/MiniMax-H3',
+  path: 'diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors',
+  dest: 'diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors',
+  bytes: 20_970_379_616
+}
+
+const MINIMAX_H3_REF2VA: ModelFileSpec = {
+  id: 'minimax_h3_ref2va',
+  repo: 'Comfy-Org/MiniMax-H3',
+  path: 'diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors',
+  dest: 'diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors',
+  bytes: 20_970_379_616
+}
+
+const MINIMAX_H3_TE: ModelFileSpec = {
+  id: 'minimax_h3_te_nvfp4',
+  repo: 'Comfy-Org/MiniMax-H3',
+  path: 'text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
+  dest: 'text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
+  bytes: 15_687_142_551
+}
+
+const MINIMAX_H3_VIDEO_VAE: ModelFileSpec = {
+  id: 'minimax_h3_video_vae',
+  repo: 'Comfy-Org/MiniMax-H3',
+  path: 'vae/minimax_h3_video_vae_fp16.safetensors',
+  dest: 'vae/minimax_h3_video_vae_fp16.safetensors',
+  bytes: 5_207_808_496
+}
+
+const MINIMAX_H3_AUDIO_VAE: ModelFileSpec = {
+  id: 'minimax_h3_audio_vae',
+  repo: 'Comfy-Org/MiniMax-H3',
+  path: 'vae/minimax_h3_audio_vae_fp32.safetensors',
+  dest: 'vae/minimax_h3_audio_vae_fp32.safetensors',
+  bytes: 605_254_808
+}
+
+const MINIMAX_H3_LICENSE: ModelPack['license'] = {
+  name: 'MiniMax H3 Community License',
+  url: 'https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/LICENSE',
+  commercialNote:
+    '日本国内では商用利用可。年間収益2,000万米ドル超の事業者は MiniMax の事前書面許諾が必要。商用製品のUIには「MiniMax H3」の表示義務があります。',
+  warnings: [
+    'EU・英国・韓国・米国では使用できません(ライセンスの適用地域外)',
+    '生成物を他のAIモデル(競合モデル)の学習・改善に使用することは禁止されています',
+    '生成物にはAI生成であることの識別子を付与する義務があります(SNS投稿時はAI生成の開示を)',
+    '虚偽情報の生成・なりすまし・軍事利用などの禁止用途が定められています(Acceptable Use Policy)'
+  ]
+}
+
 // --- packs ------------------------------------------------------------------
 
 export const MODEL_PACKS: ModelPack[] = [
@@ -524,6 +582,44 @@ export const MODEL_PACKS: ModelPack[] = [
       commercialNote: '商用利用可(Apache-2.0)。',
       warnings: []
     }
+  },
+  {
+    id: 'minimaxh3_fl2va',
+    family: 'minimaxh3',
+    name: 'MiniMax H3(標準 T2V/I2V)',
+    description:
+      'テキスト/画像から映像と音声(セリフ・効果音・BGM、32kHzステレオ)を同時生成するオムニモーダルモデル(2026/8公開・33B)。最初と最後のフレーム指定に対応。768pクラス・最大約15秒。公式推奨のint8量子化構成。',
+    totalBytes: 42_470_585_471,
+    vramNote: '24GB推奨(int8 DiT+nvfp4テキストエンコーダ・RAMオフロード併用)。12GBでも動作可(低速)。システムRAM 64GB推奨。',
+    minVramGB: 12,
+    recommended: false,
+    requiresCustomNodes: [],
+    files: [
+      MINIMAX_H3_FL2VA,
+      MINIMAX_H3_TE,
+      MINIMAX_H3_VIDEO_VAE,
+      MINIMAX_H3_AUDIO_VAE
+    ],
+    license: MINIMAX_H3_LICENSE
+  },
+  {
+    id: 'minimaxh3_ref2va',
+    family: 'minimaxh3',
+    name: 'MiniMax H3 リファレンス(R2V)',
+    description:
+      '参照メディア(画像≤9・動画≤3・音声≤3)で登場人物・動き・声を指定して生成。歌声+人物画像でリップシンク動画も作成可能。プロンプトから <Picture 1> のようにタグで参照。テキストエンコーダ/VAE(約21.5GB)は標準パックと共通のため、両方導入時の追加分は約21GBです。',
+    totalBytes: 42_470_585_471,
+    vramNote: '24GB推奨。参照トークンは全ステップに乗るため、参照が多いほど遅くなります。',
+    minVramGB: 12,
+    recommended: false,
+    requiresCustomNodes: [],
+    files: [
+      MINIMAX_H3_REF2VA,
+      MINIMAX_H3_TE,
+      MINIMAX_H3_VIDEO_VAE,
+      MINIMAX_H3_AUDIO_VAE
+    ],
+    license: MINIMAX_H3_LICENSE
   }
 ]
 

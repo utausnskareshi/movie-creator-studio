@@ -39,7 +39,8 @@ export interface GenFormState {
   missingModels: string[] | null
   dismissMissing: () => void
   error: string | null
-  submit: (options: FamilyOptions) => Promise<void>
+  /** extra merges additional request fields (e.g. MiniMax H3 reference media) */
+  submit: (options: FamilyOptions, extra?: Partial<GenerationRequest>) => Promise<void>
 }
 
 export function useGenForm(family: ModelFamily, initialMode: GenMode = 't2v'): GenFormState {
@@ -74,12 +75,13 @@ export function useGenForm(family: ModelFamily, initialMode: GenMode = 't2v'): G
   }, [prompt, selectedChips])
 
   const submit = useCallback(
-    async (options: FamilyOptions) => {
+    async (options: FamilyOptions, extra?: Partial<GenerationRequest>) => {
       setError(null)
       setSubmitting(true)
       try {
         const res = meta.resolutions[resIndex] ?? meta.resolutions[0]
-        // wanfun's reference image is optional — the control video drives it
+        // wanfun's reference image is optional — the control video drives it.
+        // minimaxh3 ref2va runs in t2v mode (references are separate inputs).
         const requiresImage =
           (mode === 'i2v' && options.family !== 'wanfun') ||
           (options.family === 'ltx2' && options.ltx2.submode === 'avatar')
@@ -101,6 +103,7 @@ export function useGenForm(family: ModelFamily, initialMode: GenMode = 't2v'): G
               ? (audioPath ?? undefined)
               : undefined,
           controlVideoPath: options.family === 'wanfun' ? (controlVideoPath ?? undefined) : undefined,
+          ...(extra ?? {}),
           options
         }
         if (requiresImage && !imagePath) {
@@ -489,13 +492,16 @@ export function GenerateBar({
   form,
   options,
   estimate,
-  extraDisabledReason
+  extraDisabledReason,
+  extra
 }: {
   form: GenFormState
   options: FamilyOptions
   estimate?: string
   /** screen-specific precondition failure (e.g. selected model variant not installed) */
   extraDisabledReason?: string | null
+  /** additional request fields merged in at submit (e.g. MiniMax H3 references) */
+  extra?: Partial<GenerationRequest>
 }): React.JSX.Element {
   const { setScreen, jobs } = useApp()
 
@@ -542,7 +548,7 @@ export function GenerateBar({
         className="btn-primary w-full py-3 text-base"
         disabled={form.submitting || !!reason}
         title={reason ?? undefined}
-        onClick={() => void form.submit(options)}
+        onClick={() => void form.submit(options, extra)}
       >
         {genActive && !extraDisabledReason ? '⏳ 生成中…' : '🎬 生成開始'}
       </button>
@@ -559,13 +565,16 @@ export function PromptBox({
   form,
   placeholder,
   family,
-  presetMode
+  presetMode,
+  hideNegative
 }: {
   form: GenFormState
   placeholder: string
   family: ModelFamily
   /** override the preset-gallery filter (LTX-2.3 passes 'avatar' in avatar submode) */
   presetMode?: PresetMode
+  /** MiniMax H3 samples with BasicGuider — there is no negative-prompt path */
+  hideNegative?: boolean
 }): React.JSX.Element {
   const { setupStatus, setScreen } = useApp()
   const [showPresets, setShowPresets] = useState(false)
@@ -668,15 +677,17 @@ export function PromptBox({
           {form.finalPrompt}
         </div>
       )}
-      <details>
-        <summary className="text-xs text-slate-400 cursor-pointer">ネガティブプロンプト</summary>
-        <textarea
-          className="input min-h-16 mt-2 font-mono text-[12px]"
-          maxLength={2000}
-          value={form.negative}
-          onChange={(e) => form.setNegative(e.target.value)}
-        />
-      </details>
+      {!hideNegative && (
+        <details>
+          <summary className="text-xs text-slate-400 cursor-pointer">ネガティブプロンプト</summary>
+          <textarea
+            className="input min-h-16 mt-2 font-mono text-[12px]"
+            maxLength={2000}
+            value={form.negative}
+            onChange={(e) => form.setNegative(e.target.value)}
+          />
+        </details>
+      )}
       {showPresets && (
         <PresetGallery
           family={family}

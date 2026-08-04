@@ -121,6 +121,25 @@ export const FAMILY_META: Record<ModelFamily, FamilyMeta> = {
     // Fun Control always needs a control video; treated as an i2v-style flow
     supportsT2V: false,
     supportsI2V: true
+  },
+  minimaxh3: {
+    id: 'minimaxh3',
+    modelLabel: 'MiniMax H3 (MiniMax Community License)',
+    fps: 24,
+    // 768px short edge, area capped at 768*1344, all multiples of 32
+    // (comfy_extras/nodes_minimax_h3.py: BASE_SHORT_EDGE / MAX_PIXELS)
+    resolutions: [
+      { w: 1344, h: 768, label: '16:9 横 (標準)' },
+      { w: 768, h: 1344, label: '9:16 縦' },
+      { w: 768, h: 768, label: '正方形' },
+      { w: 1024, h: 768, label: '4:3 横' },
+      { w: 768, h: 1024, label: '3:4 縦' }
+    ],
+    // H3 frame grid: 17k+5 at 24fps; trained range 124-362 (≈5〜15秒)
+    framePresets: [124, 192, 260, 362],
+    defaultFrames: 124,
+    supportsT2V: true,
+    supportsI2V: true
   }
 }
 
@@ -152,5 +171,7 @@ export const DEFAULT_NEGATIVES: Record<ModelFamily, string> = {
   // LTX-2: short quality negative works well; audio artifacts covered too
   ltx2: 'low quality, worst quality, blurry, distorted, jpeg artifacts, static, noisy audio',
   // Wan Fun Control shares the Wan2.2 official negative
-  wanfun: WAN_NEGATIVE
+  wanfun: WAN_NEGATIVE,
+  // MiniMax H3 samples with BasicGuider (guidance-embedded, no negative path)
+  minimaxh3: ''
 }

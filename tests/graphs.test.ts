@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import { join } from 'path'
-import { buildGraph, setWorkflowsDir } from '../src/main/comfyui/graphs'
+import { alignMinimaxFrames, buildGraph, setWorkflowsDir } from '../src/main/comfyui/graphs'
 import type { GenerationRequest } from '../src/shared/types'
 
 beforeAll(() => {
@@ -442,6 +442,131 @@ describe('buildGraph', () => {
     expect(graph['sampler_2'].inputs['start_at_step']).toBe(2)
     // the muted branch kept the canvas shift (8) — unlike wan22's shift-5 recipe
     expect(graph['model_sampling_high'].inputs['shift']).toBe(8.0)
+    assertRefsResolve(graph)
+  })
+
+  // ---- MiniMax H3 ----------------------------------------------------------
+
+  it('minimaxh3 alignMinimaxFrames snaps to the 17k+5 grid', () => {
+    expect(alignMinimaxFrames(124)).toBe(124) // already valid (17*7+5)
+    expect(alignMinimaxFrames(120)).toBe(124) // snaps UP
+    expect(alignMinimaxFrames(125)).toBe(141)
+    expect(alignMinimaxFrames(362)).toBe(362) // 17*21+5, max trained
+    expect(alignMinimaxFrames(1)).toBe(5)
+    for (const f of [124, 192, 260, 362]) {
+      // every familyMeta preset must already be on the grid
+      expect(alignMinimaxFrames(f)).toBe(f)
+    }
+  })
+
+  it('minimaxh3 t2v: prompt on cond node, no negative path, steps applied', () => {
+    const { graph, fps } = buildGraph(
+      baseReq({
+        family: 'minimaxh3',
+        mode: 't2v',
+        width: 1344,
+        height: 768,
+        frames: 124,
+        options: {
+          family: 'minimaxh3',
+          minimaxh3: { variant: 'fl2va', steps: 20, refImageSize: 'match' }
+        }
+      }),
+      'jobm1',
+      null
+    )
+    expect(fps).toBe(24)
+    expect(graph['cond'].class_type).toBe('MiniMaxH3ImageToVideo')
+    expect(graph['cond'].inputs['prompt']).toBe('a test prompt')
+    expect(graph['cond'].inputs['width']).toBe(1344)
+    expect(graph['cond'].inputs['length']).toBe(124)
+    expect(graph['scheduler'].inputs['steps']).toBe(20)
+    expect(graph['noise'].inputs['noise_seed']).toBe(42)
+    // BasicGuider chain: no negative CLIPTextEncode anywhere
+    expect(graph['negative']).toBeUndefined()
+    expect(graph['guider'].class_type).toBe('BasicGuider')
+    expect(graph['save_video'].inputs['filename_prefix']).toBe('mcs/jobm1')
+    // audio is muxed: CreateVideo must consume the audio decode
+    expect(graph['create_video'].inputs['audio']).toEqual(['audio_decode', 0])
+    assertRefsResolve(graph)
+  })
+
+  it('minimaxh3 i2v: first frame required, optional last frame pruned when absent', () => {
+    const req = baseReq({
+      family: 'minimaxh3',
+      mode: 'i2v',
+      frames: 120, // off-grid on purpose
+      options: {
+        family: 'minimaxh3',
+        minimaxh3: { variant: 'fl2va', steps: 20, refImageSize: 'match' }
+      }
+    })
+    expect(() => buildGraph(req, 'jobm2', null)).toThrow(/入力画像/)
+    const { graph } = buildGraph(req, 'jobm2', { image: 'first.png' })
+    expect(graph['load_image'].inputs['image']).toBe('first.png')
+    // no last frame picked -> node removed AND the cond input dropped
+    expect(graph['load_image_last']).toBeUndefined()
+    expect('last_frame' in graph['cond'].inputs).toBe(false)
+    expect(graph['cond'].inputs['length']).toBe(124) // snapped up from 120
+    assertRefsResolve(graph)
+  })
+
+  it('minimaxh3 i2v with last frame keeps the node wired', () => {
+    const { graph } = buildGraph(
+      baseReq({
+        family: 'minimaxh3',
+        mode: 'i2v',
+        frames: 124,
+        options: {
+          family: 'minimaxh3',
+          minimaxh3: { variant: 'fl2va', steps: 20, refImageSize: 'match' }
+        }
+      }),
+      'jobm3',
+      { image: 'first.png', lastFrame: 'last.png' }
+    )
+    expect(graph['load_image'].inputs['image']).toBe('first.png')
+    expect(graph['load_image_last'].inputs['image']).toBe('last.png')
+    expect(graph['cond'].inputs['last_frame']).toEqual(['load_image_last', 0])
+    assertRefsResolve(graph)
+  })
+
+  it('minimaxh3 r2v: references wired in order as ref_image_N / ref_video_N / ref_audio_N', () => {
+    const { graph } = buildGraph(
+      baseReq({
+        family: 'minimaxh3',
+        mode: 't2v',
+        frames: 192,
+        options: {
+          family: 'minimaxh3',
+          minimaxh3: { variant: 'ref2va', steps: 24, refImageSize: 'max' }
+        }
+      }),
+      'jobm4',
+      {
+        refImages: ['a.png', 'b.png'],
+        refVideos: ['v1.mp4'],
+        refAudios: ['song.wav']
+      }
+    )
+    expect(graph['cond'].class_type).toBe('MiniMaxH3ReferenceToVideo')
+    expect(graph['cond'].inputs['ref_image_size']).toBe('max')
+    expect(graph['scheduler'].inputs['steps']).toBe(24)
+    // images
+    expect(graph['ref_img_1'].inputs['image']).toBe('a.png')
+    expect(graph['ref_img_2'].inputs['image']).toBe('b.png')
+    expect(graph['cond'].inputs['ref_image_1']).toEqual(['ref_img_1', 0])
+    expect(graph['cond'].inputs['ref_image_2']).toEqual(['ref_img_2', 0])
+    // video via LoadVideo -> GetVideoComponents.frames
+    expect(graph['ref_vid_load_1'].inputs['file']).toBe('v1.mp4')
+    expect(graph['cond'].inputs['ref_video_1']).toEqual(['ref_vid_comp_1', 0])
+    // soundless ref videos: the paired soundtrack input must NOT be wired
+    expect('ref_video_audio_1' in graph['cond'].inputs).toBe(false)
+    // standalone audio
+    expect(graph['ref_aud_1'].inputs['audio']).toBe('song.wav')
+    expect(graph['cond'].inputs['ref_audio_1']).toEqual(['ref_aud_1', 0])
+    // r2v checkpoint selected
+    expect(String(graph['unet'].inputs['unet_name'])).toContain('ref2va')
     assertRefsResolve(graph)
   })
 })

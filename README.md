@@ -1,12 +1,12 @@
 # Movie Creator Studio
 
-**7つの動画生成AIをローカルPCで — 生成からSNS書き出しまでオールインワンのWindowsデスクトップアプリ**
+**8つの動画生成AIをローカルPCで — 生成からSNS書き出しまでオールインワンのWindowsデスクトップアプリ**
 
 [English](#english) | 日本語
 
-Movie Creator Studio は、ComfyUI をエンジンとして内蔵し、用途の異なる7種類の動画生成AIモデルを1つのアプリで使えるようにするローカル動画生成スタジオです。生成した動画はライブラリで一元管理し、編集(結合・BGM・テロップ)して YouTube / TikTok / Instagram リールなど各SNS向けの形式でそのまま書き出せます。
+Movie Creator Studio は、ComfyUI をエンジンとして内蔵し、用途の異なる8種類の動画生成AIモデルを1つのアプリで使えるようにするローカル動画生成スタジオです。生成した動画はライブラリで一元管理し、編集(結合・BGM・テロップ)して YouTube / TikTok / Instagram リールなど各SNS向けの形式でそのまま書き出せます。
 
-## ✨ 7つの生成AI — やりたいことから選ぶ
+## ✨ 8つの生成AI — やりたいことから選ぶ
 
 | やりたいこと | モデル | 画面の特徴 |
 |---|---|---|
@@ -17,6 +17,7 @@ Movie Creator Studio は、ComfyUI をエンジンとして内蔵し、用途の
 | 🚁 ドローン空撮・立体感ある背景映像 | **CosmoVideo** (NVIDIA Cosmos Predict2) | 空撮プリセット、Text2Image→Video2World自動チェーン |
 | 🎵 動画と音声を同期(MV・喋るアバター) | **LTX-2.3** (Lightricks) | 映像+音声(セリフ/BGM/環境音)を同時生成、画像+音声のリップシンクアバター |
 | 🎛️ 線画・ポーズ・深度で動きを指定 | **Wan2.2 Fun Control** (Alibaba PAI) | 制御動画から線画/ポーズ/深度を自動抽出、その動きどおりに生成 |
+| 🎭 歌声でリップシンク・画像/音声を組み合わせて音付き動画 | **MiniMax H3** (MiniMax) | テキスト+画像+動画+音声のオムニモーダル入力、映像とステレオ音声を同時生成(最大約15秒) |
 
 ## 🗂️ ライブラリ & 編集
 
@@ -70,7 +71,7 @@ npm run dist    # インストーラー作成 (release/)
 <a id="english"></a>
 # English
 
-**Movie Creator Studio** is a Windows desktop app that turns your local NVIDIA GPU (up to 24GB VRAM) into an all-in-one AI video studio. It embeds **ComfyUI** as a headless engine and gives seven video-generation models their own purpose-built screens:
+**Movie Creator Studio** is a Windows desktop app that turns your local NVIDIA GPU (up to 24GB VRAM) into an all-in-one AI video studio. It embeds **ComfyUI** as a headless engine and gives eight video-generation models their own purpose-built screens:
 
 - **AnimeGen** (AIdeaLab) — animate anime/2D illustrations while keeping the art style
 - **Wan2.2** (Alibaba) — cinematic footage with camera/lighting/color-grade prompt builders
@@ -79,6 +80,7 @@ npm run dist    # インストーラー作成 (release/)
 - **CosmoVideo** (NVIDIA Cosmos Predict2) — drone-style aerial shots and 3D-consistent backgrounds (Built on NVIDIA Cosmos)
 - **LTX-2.3** (Lightricks) — video with natively synchronized audio (dialogue/music/ambience) in one pass, plus image+voice talking avatars
 - **Wan2.2 Fun Control** (Alibaba PAI) — drive motion with a control video via auto-extracted lineart / pose / depth
+- **MiniMax H3** (MiniMax) — omni-modal generation: mix text, images, video and audio references into one video with native stereo audio (up to ~15s); sing-along lip sync from a voice clip
 
 A unified library manages every generation (with one-click re-generation), and the editor adds trimming, concatenation, BGM mixing, Japanese-ready text overlays, and one-click export presets for YouTube, Shorts, TikTok, Instagram Reels/Feed and X — including blur-pad/crop aspect conversion and motion-interpolated frame-rate upconversion.
 

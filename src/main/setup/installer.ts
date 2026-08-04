@@ -32,9 +32,14 @@ import { allModelFiles, CUSTOM_NODES, CUSTOM_NODE_ASSETS } from '../models/regis
 
 const execFileP = promisify(execFile)
 
-/** ComfyUI portable release pinned for this app version (verified working set). */
+/**
+ * ComfyUI portable release pinned for this app version (verified working set).
+ * v0.30.0: MiniMax H3 native support(v0.29.0で追加・0.30.0で768P対応完了、
+ * 公式ドキュメントの要求バージョン)。0.28→0.30 で既存7ファミリのノードに
+ * 破壊的変更はないことをリリースノートで確認済み(要実機スモークテスト)。
+ */
 export const COMFY_PIN = {
-  tag: 'v0.28.0',
+  tag: 'v0.30.0',
   asset: /^ComfyUI_windows_portable_nvidia\.7z$/
 }
 
@@ -107,12 +112,18 @@ export function getSetupStatus(): SetupStatus {
   for (const n of CUSTOM_NODES) {
     customNodes[n.id] = existsSync(join(customNodesDir(), n.id))
   }
+  let engineVersion: string | undefined
+  try {
+    const vf = join(engineDir(), 'comfy-version.txt')
+    if (existsSync(vf)) engineVersion = readFileSync(vf, 'utf-8').trim() || undefined
+  } catch {
+    /* unreadable marker = unknown version */
+  }
   return {
     comfyui: {
       installed: existsSync(comfyMain()) && existsSync(comfyPython()),
-      version: existsSync(join(engineDir(), 'comfy-version.txt'))
-        ? undefined
-        : undefined,
+      version: engineVersion,
+      pinnedVersion: COMFY_PIN.tag,
       path: comfyRoot()
     },
     ffmpeg: { installed: existsSync(ffmpegExe()) && existsSync(ffprobeExe()), path: ffmpegDir() },
@@ -232,6 +243,14 @@ export function installComfyUI(cb: ProgressCb): Promise<void> {
 }
 
 async function doInstallComfyUI(cb: ProgressCb): Promise<void> {
+  // already on the pinned version — nothing to do (the same button doubles
+  // as the「エンジンを更新」action when the pin moves with an app update)
+  const versionFile = join(engineDir(), 'comfy-version.txt')
+  const installedTag = existsSync(versionFile) ? readFileSync(versionFile, 'utf-8').trim() : ''
+  if (existsSync(comfyMain()) && existsSync(comfyPython()) && installedTag === COMFY_PIN.tag) {
+    cb(progress('comfyui', `ComfyUI portable ${COMFY_PIN.tag}`, 'done'))
+    return
+  }
   const asset = await githubReleaseAsset('comfyanonymous/ComfyUI', COMFY_PIN.tag, COMFY_PIN.asset)
   if (!asset) throw new Error(`ComfyUI release asset not found for ${COMFY_PIN.tag}`)
   const archive = join(tempDir(), asset.name)
@@ -247,6 +266,17 @@ async function doInstallComfyUI(cb: ProgressCb): Promise<void> {
     cb
   )
   cb(progress('comfyui', 'ComfyUI portable', 'extracting'))
+  // UPDATE PATH: the portable tree (embedded python + site-packages) must be
+  // replaced wholesale — extracting a new version over an old one leaves a
+  // mixed install. Models live outside engineDir; custom nodes live inside,
+  // so remember which were present and re-install them against the NEW
+  // embedded python (their pip deps live in the wiped site-packages).
+  const nodesToRestore = CUSTOM_NODES.filter((n) =>
+    existsSync(join(customNodesDir(), n.id))
+  ).map((n) => n.id)
+  if (existsSync(engineDir())) {
+    rmSync(engineDir(), { recursive: true, force: true })
+  }
   await extract7z(archive, engineDir())
   rmSync(archive, { force: true })
   if (!existsSync(comfyMain())) {
@@ -254,6 +284,11 @@ async function doInstallComfyUI(cb: ProgressCb): Promise<void> {
   }
   writeFileSync(join(engineDir(), 'comfy-version.txt'), COMFY_PIN.tag, 'utf-8')
   writeExtraModelPaths()
+  for (const id of nodesToRestore) {
+    // exclusive per node id — joins instead of double-running if a pack
+    // download happens to install the same node concurrently
+    await installCustomNode(id, cb)
+  }
   cb(progress('comfyui', 'ComfyUI portable', 'done'))
 }
 

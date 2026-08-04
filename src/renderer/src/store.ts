@@ -44,6 +44,7 @@ export type Screen =
   | 'cosmos'
   | 'ltx2'
   | 'wanfun'
+  | 'minimaxh3'
   | 'library'
   | 'editor'
   | 'settings'

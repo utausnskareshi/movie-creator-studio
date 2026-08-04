@@ -55,7 +55,15 @@ export const SYSTEM_PROMPTS: Record<ModelFamily, string> = {
     COMMON +
     ' Target model: Wan2.2 Fun Control, which follows a control signal (pose/lineart/depth) extracted from a control video. ' +
     'Write a 50-90 word prompt describing the SUBJECT and SCENE appearance, style, lighting and mood — do NOT describe the motion ' +
-    'itself (the control video dictates motion). Focus on who/what the character is, clothing, environment, art style, and camera/lighting.'
+    'itself (the control video dictates motion). Focus on who/what the character is, clothing, environment, art style, and camera/lighting.',
+  minimaxh3:
+    COMMON +
+    ' Target model: MiniMax H3, an omni-modal model that generates video WITH synchronized stereo audio (dialogue, sound effects, music) in one pass. ' +
+    'Write a 50-110 word prompt describing the visuals AND the audio explicitly (what is said, the music mood, ambient/foley sounds). ' +
+    'Multi-shot sequences are supported — describe cuts if wanted. ' +
+    'CRITICAL: if the Japanese text contains reference tags like <Picture 1>, <Video 2> or <Audio 1>, keep those tags EXACTLY as written ' +
+    '(same spelling, capitalization and numbers) in the English output — they refer to attached reference files ' +
+    '(e.g. "the person in <Picture 1> sings along to <Audio 1> with accurate lip sync"). Never translate or renumber the tags.'
 }
 
 /** Strip a leading <think>...</think> block and surrounding quotes/whitespace. */

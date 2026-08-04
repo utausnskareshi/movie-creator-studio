@@ -1,7 +1,7 @@
 {
   "name": "movie-creator-studio",
-  "version": "1.0.0",
-  "description": "Local AI video generation studio for Windows — 7 video models on an embedded ComfyUI engine, with library management, editing and SNS export.",
+  "version": "1.1.0",
+  "description": "Local AI video generation studio for Windows — 8 video models on an embedded ComfyUI engine, with library management, editing and SNS export.",
   "main": "out/main/index.js",
   "author": "歌うＬＩＮＥ彼氏",
   "license": "MIT",
