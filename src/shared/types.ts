@@ -243,6 +243,15 @@ export interface MinimaxH3Options {
    * fidelity (reference tokens ride every step — several times slower).
    */
   refImageSize: 'match' | 'max'
+  /**
+   * I2V first-frame fitting. MiniMaxH3ImageToVideo plain-STRETCHES the first
+   * frame to the canvas ("geometry anchor" in the node source), so a portrait
+   * image on a landscape canvas comes out distorted. The app pre-fits the
+   * image instead: 'blur' = blurred-background pad (recommended), 'pad' =
+   * black bars, 'crop' = center crop, 'stretch' = the node's native behavior.
+   * (The optional LAST frame is cover-cropped by the node and never distorts.)
+   */
+  aspectMode: 'blur' | 'pad' | 'crop' | 'stretch'
 }
 
 export type ControlType = 'canny' | 'pose' | 'depth'

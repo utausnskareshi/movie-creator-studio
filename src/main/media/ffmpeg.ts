@@ -149,6 +149,44 @@ export async function fitPadBlackImage(
 }
 
 /**
+ * Fill w×h completely with NO distortion: aspect-preserving scale to cover,
+ * then center crop. Edges beyond the target aspect are lost.
+ */
+export async function fitCropImage(
+  srcPath: string,
+  outPath: string,
+  w: number,
+  h: number
+): Promise<void> {
+  const vf = `scale=${w}:${h}:force_original_aspect_ratio=increase:flags=lanczos,crop=${w}:${h},setsar=1`
+  const r = await runFfmpeg(['-i', srcPath, '-vf', vf, '-frames:v', '1', outPath], { timeoutMs: 60_000 })
+  if (r.code !== 0) throw new Error(`image fit-crop failed: ${r.stderr.slice(-400)}`)
+}
+
+/**
+ * Fit an image into w×h with NO distortion and NO content loss: the image
+ * itself is scaled to fit inside, and the leftover bars are filled with a
+ * blurred, slightly darkened cover-crop of the same image (the SNS-style
+ * "blurred background" look, matching the exporter's blurpad mode).
+ */
+export async function fitBlurPadImage(
+  srcPath: string,
+  outPath: string,
+  w: number,
+  h: number
+): Promise<void> {
+  const fc =
+    `[0:v]scale=${w}:${h}:force_original_aspect_ratio=increase:flags=lanczos,crop=${w}:${h},gblur=sigma=24,eq=brightness=-0.08[bg];` +
+    `[0:v]scale=${w}:${h}:force_original_aspect_ratio=decrease:flags=lanczos[fg];` +
+    `[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1`
+  const r = await runFfmpeg(
+    ['-i', srcPath, '-filter_complex', fc, '-frames:v', '1', outPath],
+    { timeoutMs: 60_000 }
+  )
+  if (r.code !== 0) throw new Error(`image fit-blurpad failed: ${r.stderr.slice(-400)}`)
+}
+
+/**
  * Convert any audio file to 48kHz stereo PCM wav. ComfyUI's LoadAudio combo
  * filters the input dir by MIME type, so exotic extensions (aac/flac on some
  * systems) can fail /prompt validation — wav always passes and feeds the

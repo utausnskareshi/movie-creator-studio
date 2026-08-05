@@ -76,6 +76,10 @@ export default function MinimaxScreen(): React.JSX.Element {
   const [tab, setTab] = useState<Tab>('t2v')
   const [steps, setSteps] = useState(20)
   const [refImageSize, setRefImageSize] = useState<'match' | 'max'>('match')
+  // I2V first-frame fitting — the model node plain-stretches the first frame
+  // to the canvas, so mismatched aspect (portrait image → landscape video)
+  // would distort without app-side pre-fitting
+  const [aspectMode, setAspectMode] = useState<'blur' | 'pad' | 'crop' | 'stretch'>('blur')
   // FL2VA optional last keyframe
   const [lastFramePath, setLastFramePath] = useState<string | null>(null)
   // Ref2VA reference media (model limits: 9 / 3 / 3, 12 total)
@@ -86,7 +90,7 @@ export default function MinimaxScreen(): React.JSX.Element {
   const isR2V = tab === 'r2v'
   const options: FamilyOptions = {
     family: 'minimaxh3',
-    minimaxh3: { variant: isR2V ? 'ref2va' : 'fl2va', steps, refImageSize }
+    minimaxh3: { variant: isR2V ? 'ref2va' : 'fl2va', steps, refImageSize, aspectMode }
   }
 
   function switchTab(next: Tab): void {
@@ -187,6 +191,23 @@ export default function MinimaxScreen(): React.JSX.Element {
                       クリックして選択 — 指定すると「最初→最後」をつなぐ動画になります
                     </span>
                   )}
+                </div>
+              </div>
+              <div>
+                <div className="label">縦横が合わない画像の扱い(最初のフレーム)</div>
+                <select
+                  className="input"
+                  value={aspectMode}
+                  onChange={(e) => setAspectMode(e.target.value as 'blur' | 'pad' | 'crop' | 'stretch')}
+                >
+                  <option value="blur">ぼかし背景で埋める — 全体を残す(推奨)</option>
+                  <option value="pad">黒帯で埋める — 全体を残す</option>
+                  <option value="crop">中央クロップ — 画面いっぱい(端は切れる)</option>
+                  <option value="stretch">引き伸ばし — モデルそのまま(歪む)</option>
+                </select>
+                <div className="text-[11px] text-slate-500 mt-1">
+                  モデルは最初のフレームを選択解像度へ引き伸ばすため、縦画像→横動画は歪みます。
+                  画像の向きに解像度(9:16 / 16:9)を合わせるのが最良です
                 </div>
               </div>
             </>

@@ -469,7 +469,7 @@ describe('buildGraph', () => {
         frames: 124,
         options: {
           family: 'minimaxh3',
-          minimaxh3: { variant: 'fl2va', steps: 20, refImageSize: 'match' }
+          minimaxh3: { variant: 'fl2va', steps: 20, refImageSize: 'match', aspectMode: 'blur' }
         }
       }),
       'jobm1',
@@ -498,7 +498,7 @@ describe('buildGraph', () => {
       frames: 120, // off-grid on purpose
       options: {
         family: 'minimaxh3',
-        minimaxh3: { variant: 'fl2va', steps: 20, refImageSize: 'match' }
+        minimaxh3: { variant: 'fl2va', steps: 20, refImageSize: 'match', aspectMode: 'blur' }
       }
     })
     expect(() => buildGraph(req, 'jobm2', null)).toThrow(/入力画像/)
@@ -519,7 +519,7 @@ describe('buildGraph', () => {
         frames: 124,
         options: {
           family: 'minimaxh3',
-          minimaxh3: { variant: 'fl2va', steps: 20, refImageSize: 'match' }
+          minimaxh3: { variant: 'fl2va', steps: 20, refImageSize: 'match', aspectMode: 'blur' }
         }
       }),
       'jobm3',
@@ -539,7 +539,7 @@ describe('buildGraph', () => {
         frames: 192,
         options: {
           family: 'minimaxh3',
-          minimaxh3: { variant: 'ref2va', steps: 24, refImageSize: 'max' }
+          minimaxh3: { variant: 'ref2va', steps: 24, refImageSize: 'max', aspectMode: 'blur' }
         }
       }),
       'jobm4',

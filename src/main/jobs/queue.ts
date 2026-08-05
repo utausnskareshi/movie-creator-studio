@@ -8,7 +8,7 @@ import { buildGraph, type InputRefs } from '../comfyui/graphs'
 import { engineOutputDir, libraryDir, modelsDir, tempDir, thumbsDir } from '../core/paths'
 import { allModelFiles } from '../models/registry'
 import { library } from '../library/store'
-import { ffmpegAvailable, fitPadBlackImage, makeThumbnail, prepareControlVideo, prepareRefVideo, probe, toWav48k } from '../media/ffmpeg'
+import { ffmpegAvailable, fitBlurPadImage, fitCropImage, fitPadBlackImage, makeThumbnail, prepareControlVideo, prepareRefVideo, probe, toWav48k } from '../media/ffmpeg'
 
 type JobCb = (job: JobInfo) => void
 
@@ -278,6 +278,31 @@ class JobQueue {
             toUpload = fitted
           } catch {
             // fall back to the raw image (workflow then resizes without crop)
+          }
+        }
+        // MiniMaxH3ImageToVideo plain-STRETCHES the first frame onto the canvas
+        // ("geometry anchor" in the node source), so a portrait image on a
+        // landscape canvas would distort. Pre-fit it app-side per the chosen
+        // mode; 'stretch' keeps the node's native behavior. Requests stored
+        // before this option existed fall back to 'blur'.
+        if (job.request.options.family === 'minimaxh3' && job.request.mode === 'i2v') {
+          const am = job.request.options.minimaxh3.aspectMode ?? 'blur'
+          if (am !== 'stretch') {
+            this.patch(jobId, { progressText: '入力画像を調整中…' })
+            mkdirSync(tempDir(), { recursive: true })
+            const fitted = join(tempDir(), `i2v_${jobId}.png`)
+            try {
+              if (am === 'crop') {
+                await fitCropImage(job.request.inputImagePath, fitted, job.request.width, job.request.height)
+              } else if (am === 'pad') {
+                await fitPadBlackImage(job.request.inputImagePath, fitted, job.request.width, job.request.height)
+              } else {
+                await fitBlurPadImage(job.request.inputImagePath, fitted, job.request.width, job.request.height)
+              }
+              toUpload = fitted
+            } catch {
+              // fall back to the raw image (the node then stretches it)
+            }
           }
         }
         this.patch(jobId, { progressText: '入力画像アップロード中…' })
