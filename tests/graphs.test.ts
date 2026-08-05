@@ -552,19 +552,23 @@ describe('buildGraph', () => {
     expect(graph['cond'].class_type).toBe('MiniMaxH3ReferenceToVideo')
     expect(graph['cond'].inputs['ref_image_size']).toBe('max')
     expect(graph['scheduler'].inputs['steps']).toBe(24)
-    // images
+    // images — V3 autogrow slots are addressed as "<group>.<template><i>"
+    // with ZERO-based indices (build_nested_inputs regroups them into the
+    // dict params of execute(); flat 1-based names raise TypeError there)
     expect(graph['ref_img_1'].inputs['image']).toBe('a.png')
     expect(graph['ref_img_2'].inputs['image']).toBe('b.png')
-    expect(graph['cond'].inputs['ref_image_1']).toEqual(['ref_img_1', 0])
-    expect(graph['cond'].inputs['ref_image_2']).toEqual(['ref_img_2', 0])
+    expect(graph['cond'].inputs['ref_images.ref_image_0']).toEqual(['ref_img_1', 0])
+    expect(graph['cond'].inputs['ref_images.ref_image_1']).toEqual(['ref_img_2', 0])
     // video via LoadVideo -> GetVideoComponents.frames
     expect(graph['ref_vid_load_1'].inputs['file']).toBe('v1.mp4')
-    expect(graph['cond'].inputs['ref_video_1']).toEqual(['ref_vid_comp_1', 0])
-    // soundless ref videos: the paired soundtrack input must NOT be wired
-    expect('ref_video_audio_1' in graph['cond'].inputs).toBe(false)
+    expect(graph['cond'].inputs['ref_videos.ref_video_0']).toEqual(['ref_vid_comp_1', 0])
+    // soundless ref videos: no paired soundtrack slot may be wired
+    expect(Object.keys(graph['cond'].inputs).some((k) => k.startsWith('ref_video_audios.'))).toBe(false)
     // standalone audio
     expect(graph['ref_aud_1'].inputs['audio']).toBe('song.wav')
-    expect(graph['cond'].inputs['ref_audio_1']).toEqual(['ref_aud_1', 0])
+    expect(graph['cond'].inputs['ref_audios.ref_audio_0']).toEqual(['ref_aud_1', 0])
+    // no legacy flat names (the pre-fix wiring) may remain anywhere
+    expect(Object.keys(graph['cond'].inputs).some((k) => /^ref_(image|video|audio)_\d+$/.test(k))).toBe(false)
     // r2v checkpoint selected
     expect(String(graph['unet'].inputs['unet_name'])).toContain('ref2va')
     assertRefsResolve(graph)

@@ -114,11 +114,18 @@ export function alignMinimaxFrames(n: number): number {
 
 /**
  * Wire Ref2VA reference media as LoadImage / LoadVideo+GetVideoComponents /
- * LoadAudio nodes feeding the autogrow inputs ref_image_N / ref_video_N /
- * ref_audio_N. Reference order fixed by the node: images, then videos, then
- * standalone audio — the prompt refers to them as <Picture i>/<Video k>/<Audio j>.
+ * LoadAudio nodes feeding the node's V3 Autogrow inputs. In API format an
+ * autogrow slot is addressed as "<group>.<template><index>" with a ZERO-based
+ * index — e.g. ref_images.ref_image_0 — because the executor's
+ * build_nested_inputs() splits each input name on "." and regroups the values
+ * into the dict parameters (ref_images / ref_videos / ref_audios) that
+ * MiniMaxH3ReferenceToVideo.execute() expects; a flat name like ref_image_1
+ * passes /prompt validation but reaches execute() as an unexpected kwarg
+ * (TypeError). Verified against the official video_minimax_h3_r2v template.
+ * Reference order is fixed by the node: images, then videos, then standalone
+ * audio — the PROMPT refers to them 1-based as <Picture i>/<Video k>/<Audio j>.
  * Uploaded ref videos are pre-transcoded to soundless 24fps mp4, so the
- * paired ref_video_audio_N inputs are deliberately not used (lip-sync audio
+ * paired ref_video_audios.* inputs are deliberately not used (lip-sync audio
  * goes through standalone <Audio j> refs instead).
  */
 function wireMinimaxRefs(graph: WorkflowGraph, refs: InputRefs): void {
@@ -131,7 +138,7 @@ function wireMinimaxRefs(graph: WorkflowGraph, refs: InputRefs): void {
       inputs: { image: name },
       _meta: { title: `Reference Image ${i + 1} (<Picture ${i + 1}>)` }
     }
-    cond.inputs[`ref_image_${i + 1}`] = [id, 0]
+    cond.inputs[`ref_images.ref_image_${i}`] = [id, 0]
   })
   ;(refs.refVideos ?? []).forEach((name, i) => {
     const loadId = `ref_vid_load_${i + 1}`
@@ -146,7 +153,7 @@ function wireMinimaxRefs(graph: WorkflowGraph, refs: InputRefs): void {
       inputs: { video: [loadId, 0] },
       _meta: { title: `Video ${i + 1} frames` }
     }
-    cond.inputs[`ref_video_${i + 1}`] = [compId, 0]
+    cond.inputs[`ref_videos.ref_video_${i}`] = [compId, 0]
   })
   ;(refs.refAudios ?? []).forEach((name, i) => {
     const id = `ref_aud_${i + 1}`
@@ -155,7 +162,7 @@ function wireMinimaxRefs(graph: WorkflowGraph, refs: InputRefs): void {
       inputs: { audio: name },
       _meta: { title: `Reference Audio ${i + 1} (<Audio ${i + 1}>)` }
     }
-    cond.inputs[`ref_audio_${i + 1}`] = [id, 0]
+    cond.inputs[`ref_audios.ref_audio_${i}`] = [id, 0]
   })
 }
 

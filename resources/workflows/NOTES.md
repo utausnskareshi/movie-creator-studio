@@ -384,8 +384,12 @@ UNETLoader(pruned int8_convrot, weight_dtype default)
 + VAELoader(video fp16) + VAELoader(audio fp32)
 -> MiniMaxH3ImageToVideo (t2va/fl2va: prompt/width/height/length,
    optional first_frame/last_frame)  |  MiniMaxH3ReferenceToVideo (ref2va:
-   + audio_vae, ref_image_size match|max, autogrow inputs ref_image_1..9 /
-   ref_video_1..3 / ref_video_audio_N / ref_audio_1..3)
+   + audio_vae, ref_image_size match|max, io.Autogrow inputs addressed in API
+   format as "<group>.<template><i>" with ZERO-based i — ref_images.ref_image_0..8 /
+   ref_videos.ref_video_0..2 / ref_video_audios.ref_video_audio_0..2 /
+   ref_audios.ref_audio_0..2; build_nested_inputs() regroups them into the
+   dict params of execute(), and flat 1-based names like ref_image_1 pass
+   /prompt validation but hit execute() as an unexpected kwarg = TypeError)
 -> RandomNoise -> BasicGuider (NO cfg, NO negative) -> SamplerCustomAdvanced
    with KSamplerSelect(res_multistep) + BasicScheduler(simple, 20 steps, denoise 1)
 -> same latent into VAEDecode (video vae) and VAEDecodeAudio (audio vae)
@@ -400,7 +404,7 @@ Node-source facts encoded in the app:
   templates do NOT insert it — we follow the templates.
 - ref videos: node requires >=5 frames, aligns down to 17k+5, assumes 24fps
   timing; app pre-transcodes refs to 24fps/<=15s/no-audio mp4 (prepareRefVideo)
-  and passes soundtrack-less videos; lip-sync audio goes through ref_audio_N
-  (paired ref_video_audio_N inputs deliberately unused).
+  and passes soundtrack-less videos; lip-sync audio goes through
+  ref_audios.ref_audio_i (paired ref_video_audios.* inputs deliberately unused).
 - audio refs REQUIRE an image/video companion (HF model card) — enforced in
   sanitizeRequest and in the screen.
