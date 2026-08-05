@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, renameSync, copyFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import type { GenerationRequest, JobInfo, VideoRecord } from '@shared/types'
 import { FAMILY_META } from '@shared/familyMeta'
+import { findMinimaxTagIssue } from '@shared/minimaxTags'
 import { comfyManager } from '../comfyui/manager'
 import { buildGraph, type InputRefs } from '../comfyui/graphs'
 import { engineOutputDir, libraryDir, modelsDir, tempDir, thumbsDir } from '../core/paths'
@@ -121,6 +122,22 @@ function sanitizeRequest(req: GenerationRequest): void {
       throw new Error(
         '参照音声には画像または動画の同伴が必要です(例: 歌声+人物画像でリップシンク)'
       )
+    }
+    // R2V only: a prompt tag pointing past the provided references is
+    // undefined behavior model-side — reject with a clear message instead
+    if (req.options.family === 'minimaxh3' && req.options.minimaxh3.variant === 'ref2va') {
+      const issue = findMinimaxTagIssue(req.prompt, {
+        images: imgs.length,
+        videos: vids.length,
+        audios: auds.length
+      })
+      if (issue) {
+        const label =
+          issue.kind === 'Picture' ? '参照画像' : issue.kind === 'Video' ? '参照動画' : '参照音声'
+        throw new Error(
+          `プロンプトの <${issue.kind} ${issue.index}> に対応する${label}がありません(現在${issue.available}件)。参照を追加するかタグを修正してください`
+        )
+      }
     }
   }
 }
@@ -376,6 +393,14 @@ class JobQueue {
           for (let i = 0; i < vids.length; i++) {
             // 24fps・15秒上限・音声なしへ正規化(音声は <Audio j> 参照で渡す)
             this.patch(jobId, { progressText: `参照動画 ${i + 1}/${vids.length} を変換中…` })
+            // fail fast on too-short refs: the node needs >=5 frames (~0.21s
+            // at 24fps) and would otherwise error AFTER the 42GB model load
+            const vMeta = await probe(vids[i]).catch(() => null)
+            if (vMeta && vMeta.durationSec > 0 && vMeta.durationSec < 0.3) {
+              throw new Error(
+                `参照動画 ${i + 1} が短すぎます(約${vMeta.durationSec.toFixed(1)}秒)。0.3秒以上(推奨2〜15秒)の動画を指定してください`
+              )
+            }
             let up = vids[i]
             try {
               const mp4 = join(tempDir(), `refv_${jobId}_${i + 1}.mp4`)
@@ -390,6 +415,12 @@ class JobQueue {
           }
           for (let i = 0; i < auds.length; i++) {
             this.patch(jobId, { progressText: `参照音声 ${i + 1}/${auds.length} を変換中…` })
+            const aMeta = await probe(auds[i]).catch(() => null)
+            if (aMeta && aMeta.durationSec > 0 && aMeta.durationSec < 0.3) {
+              throw new Error(
+                `参照音声 ${i + 1} が短すぎます(約${aMeta.durationSec.toFixed(1)}秒)。0.3秒以上(推奨2〜15秒)の音声を指定してください`
+              )
+            }
             let up = auds[i]
             try {
               const wav = join(tempDir(), `refa_${jobId}_${i + 1}.wav`)

@@ -13,6 +13,7 @@ import {
 import { clampInt } from '../../lib/num'
 import { packReadyById } from '../../lib/ready'
 import { useApp } from '../../store'
+import { findMinimaxTagIssue, hasMinimaxTag } from '@shared/minimaxTags'
 
 type Tab = 't2v' | 'i2v' | 'r2v'
 
@@ -102,6 +103,19 @@ export default function MinimaxScreen(): React.JSX.Element {
   const totalRefs = refImages.length + refVideos.length + refAudios.length
   const refCapReason = totalRefs >= 12 ? '参照ファイルは合計12個までです' : null
   const audioNeedsVisual = isR2V && refAudios.length > 0 && refImages.length + refVideos.length === 0
+  // プロンプト内のタグ(チップ由来含む)が実在の参照を指しているか
+  const tagIssue = isR2V
+    ? findMinimaxTagIssue(form.finalPrompt, {
+        images: refImages.length,
+        videos: refVideos.length,
+        audios: refAudios.length
+      })
+    : null
+  const tagIssueReason = tagIssue
+    ? `プロンプトの <${tagIssue.kind} ${tagIssue.index}> に対応する${
+        tagIssue.kind === 'Picture' ? '参照画像' : tagIssue.kind === 'Video' ? '参照動画' : '参照音声'
+      }がありません(現在${tagIssue.available}件)。参照を追加するかタグを修正してください`
+    : null
 
   // extra request fields merged at submit
   const extra: Partial<GenerationRequest> = isR2V
@@ -121,9 +135,11 @@ export default function MinimaxScreen(): React.JSX.Element {
       : 'モデルが未ダウンロードです。セットアップ画面から「MiniMax H3(標準 T2V/I2V)」を導入してください'
     : audioNeedsVisual
       ? '参照音声には画像または動画の同伴が必要です(人物画像を1枚追加してください)'
-      : isR2V && totalRefs === 0 && !form.finalPrompt
-        ? 'プロンプトを入力してください(参照なしでも生成できますが、R2Vは参照ファイルの追加が本領です)'
-        : null
+      : tagIssueReason
+        ? tagIssueReason
+        : isR2V && totalRefs === 0 && !form.finalPrompt
+          ? 'プロンプトを入力してください(参照なしでも生成できますが、R2Vは参照ファイルの追加が本領です)'
+          : null
 
   /** insert a <Picture n> style tag at the end of the prompt */
   function insertTag(tag: string): void {
@@ -248,6 +264,11 @@ export default function MinimaxScreen(): React.JSX.Element {
               {audioNeedsVisual && (
                 <div className="text-[11px] text-amber-400">
                   ⚠️ 参照音声には画像または動画の同伴が必要です(例: 歌声+人物画像)
+                </div>
+              )}
+              {totalRefs > 0 && !hasMinimaxTag(form.finalPrompt) && (
+                <div className="text-[11px] text-slate-400">
+                  💡 追加した参照は {'<Picture 1>'} のようにプロンプト内のタグで指定してください(下のタグボタンで挿入できます)
                 </div>
               )}
               <div>
