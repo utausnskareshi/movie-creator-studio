@@ -308,6 +308,11 @@ export default function MinimaxScreen(): React.JSX.Element {
                 : '例: 雨の夜の街を歩く女性。ネオンの反射、しっとりしたピアノBGM、雨音(日本語OK — 音の描写も書けます)'
             }
           />
+          {!isR2V && hasMinimaxTag(form.finalPrompt) && (
+            <div className="text-[11px] text-amber-400/90">
+              ⚠️ {'<Picture n>'} などの参照タグは「リファレンス (R2V)」タブ専用です — T2V/I2Vではただの文字として扱われます
+            </div>
+          )}
           <div className="card p-3">
             <div className="text-xs font-bold text-slate-300 mb-2">🎬 プロンプトビルダー</div>
             <ChipsBox family="minimaxh3" selected={form.selectedChips} toggle={form.toggleChip} />

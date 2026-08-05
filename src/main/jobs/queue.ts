@@ -374,13 +374,41 @@ class JobQueue {
       // MiniMax H3: optional last keyframe (FL2VA) and reference media (Ref2VA)
       if (job.request.options.family === 'minimaxh3') {
         if (job.request.lastFrameImagePath && job.request.mode === 'i2v') {
+          // the node cover-crops the LAST frame ("center"), while the app
+          // pre-fits the FIRST frame per aspectMode — without the same fit
+          // here, blur/pad first frames carry bars that the last frame lacks,
+          // and the video morphs between the two compositions. Pre-fitting
+          // makes the node's crop an identity op ('stretch' keeps node-native
+          // behavior for both frames).
+          let lastToUpload = job.request.lastFrameImagePath
+          const lam = job.request.options.minimaxh3.aspectMode ?? 'blur'
+          if (lam !== 'stretch') {
+            this.patch(jobId, { progressText: '最終フレーム画像を調整中…' })
+            mkdirSync(tempDir(), { recursive: true })
+            const fitted = join(tempDir(), `i2v_last_${jobId}.png`)
+            try {
+              if (lam === 'crop') {
+                await fitCropImage(lastToUpload, fitted, job.request.width, job.request.height)
+              } else if (lam === 'pad') {
+                await fitPadBlackImage(lastToUpload, fitted, job.request.width, job.request.height)
+              } else {
+                await fitBlurPadImage(lastToUpload, fitted, job.request.width, job.request.height)
+              }
+              lastToUpload = fitted
+            } catch {
+              // fall back to the raw image (the node then cover-crops it)
+            }
+          }
           this.patch(jobId, { progressText: '最終フレーム画像アップロード中…' })
-          refs.lastFrame = await client.uploadImage(job.request.lastFrameImagePath)
+          refs.lastFrame = await client.uploadImage(lastToUpload)
         }
         const imgs = job.request.refImagePaths ?? []
         const vids = job.request.refVideoPaths ?? []
         const auds = job.request.refAudioPaths ?? []
-        if (imgs.length + vids.length + auds.length > 0) {
+        // reference media belongs to the Ref2VA variant only — a tampered
+        // fl2va request carrying ref paths would waste time uploading media
+        // the fl2va graph never consumes
+        if (job.request.options.minimaxh3.variant === 'ref2va' && imgs.length + vids.length + auds.length > 0) {
           mkdirSync(tempDir(), { recursive: true })
           refs.refImages = []
           refs.refVideos = []
@@ -625,6 +653,7 @@ class JobQueue {
       // minimax reference media) used to accumulate under work/tmp
       const scratch = [
         join(tempDir(), `i2v_${jobId}.png`),
+        join(tempDir(), `i2v_last_${jobId}.png`),
         join(tempDir(), `audio_${jobId}.wav`),
         join(tempDir(), `ctrl_${jobId}.mp4`)
       ]
