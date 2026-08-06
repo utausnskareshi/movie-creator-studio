@@ -417,6 +417,8 @@ export type UpdaterStatus =
   | 'not-available'
   | 'downloading'
   | 'downloaded'
+  /** user pressed "restart now": engines are shutting down, the app is quitting */
+  | 'applying'
   | 'error'
 
 export interface UpdaterState {

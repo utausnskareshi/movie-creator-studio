@@ -35,6 +35,11 @@ export function isDownloadActive(id: string): boolean {
   return activeControllers.has(id)
 }
 
+/** true while ANY transfer is in flight (used to refuse quit-to-update) */
+export function hasActiveDownload(): boolean {
+  return activeControllers.size > 0
+}
+
 export interface DownloadTask {
   id: string
   label: string

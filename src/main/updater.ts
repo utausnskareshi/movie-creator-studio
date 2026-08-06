@@ -28,6 +28,7 @@ const state: UpdaterState = {
 }
 let notifiedVersion: string | null = null
 let initialized = false
+let retryArmed = false
 // true from the moment the user confirms "restart now" until the app exits:
 // the queue refuses new generations so nothing can spawn an engine that would
 // outlive the process (see installUpdateNow).
@@ -76,9 +77,23 @@ export async function checkForUpdatesNow(origin: 'startup' | 'manual'): Promise<
   }
   ulog(`check (${origin}) from v${state.currentVersion}`)
   try {
-    await autoUpdater.checkForUpdates()
-  } catch {
-    // the 'error' listener has already logged and pushed the failure state
+    // Bounded: builder-util-runtime's own timeout hangs off request.on('socket'),
+    // an event Electron's ClientRequest never emits, so a dead connection can
+    // leave this promise pending forever — wedging status:'checking', which
+    // this very function treats as busy, with no terminal line in the log.
+    await Promise.race([
+      autoUpdater.checkForUpdates(),
+      new Promise((_resolve, reject) => {
+        setTimeout(() => reject(new Error('timeout')), 90_000).unref?.()
+      })
+    ])
+  } catch (e) {
+    // a genuine failure was already logged/pushed by the 'error' listener;
+    // only the timeout above is ours to report
+    if (getUpdaterState().status === 'checking') {
+      ulog(`check did not settle: ${e instanceof Error ? e.message : String(e)}`)
+      push({ status: 'error', error: '更新の確認がタイムアウトしました', checkedAt: Date.now() })
+    }
   }
   // A settled check that emitted no terminal event would leave status stuck
   // on 'checking' — which this function itself treats as "busy", permanently
@@ -107,18 +122,25 @@ export async function installUpdateNow(): Promise<void> {
   // moments before the app exits — re-creating the very orphan this function
   // exists to avoid. Set synchronously so no enqueue can slip through.
   applyingUpdate = true
+  // Tell the UI: generation and export are ALREADY being refused from here,
+  // so the card must stop advertising「今すぐ再起動して更新」while the engine
+  // shutdown (1.5〜6.5秒) runs.
+  push({ status: 'applying' })
   ulog('stopping engines before quitAndInstall')
   llmManager.stop()
   await comfyManager.stop().catch(() => undefined)
   ulog('quitAndInstall (user requested restart)')
   autoUpdater.quitAndInstall(true, true)
-  // quitAndInstall returns without quitting when the staged installer can't
-  // be launched (it neither throws nor reports). If we are still alive after
-  // that, release the gate — otherwise generation stays blocked for the rest
-  // of the session. The update itself is still staged and applies on quit.
+  // Safety net for a target whose install() reports failure and returns
+  // without quitting: release the gate so generation isn't blocked for the
+  // rest of the session (the update stays staged and applies on quit).
+  // NOTE: on Windows/NSIS this never fires — NsisUpdater.doInstall spawns the
+  // installer without awaiting it and returns true unconditionally, so
+  // quitAndInstall always reaches app.quit().
   setTimeout(() => {
     if (!applyingUpdate) return
     applyingUpdate = false
+    push({ status: 'downloaded' })
     ulog('still running after quitAndInstall — update not applied now (stays staged for quit)')
   }, 10_000).unref?.()
 }
@@ -135,6 +157,29 @@ export function initUpdater(): void {
   // data and user files on that path)
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
+
+  // electron-updater's default logger is `console`, which goes nowhere in a
+  // packaged main process — and the ENTIRE default apply path is reported only
+  // through it: addQuitHandler's "Auto install update on quit", the
+  // "quitting with exit code" skip, and NsisUpdater's "Cannot run installer:
+  // error code ...", none of which are 'error' EVENTS the handlers below see.
+  // Without this adapter a failed apply is a silent no-op — the exact class of
+  // bug this file exists to eliminate.
+  autoUpdater.logger = {
+    info: (m: unknown) => ulog(`eu: ${String(m)}`),
+    warn: (m: unknown) => ulog(`eu WARN: ${String(m)}`),
+    error: (m: unknown) => ulog(`eu ERROR: ${String(m)}`),
+    debug: () => undefined
+  }
+
+  // A proxy that demands auth (407) leaves the request hanging when nothing
+  // answers. We have no credentials to offer and must not prompt, so answer
+  // with empty ones: the request then fails fast and surfaces as a normal
+  // 'error' the user can see, instead of a silent stall.
+  autoUpdater.on('login', (_info, callback) => {
+    ulog('proxy authentication required — no credentials available')
+    callback('', '')
+  })
 
   autoUpdater.on('checking-for-update', () => push({ status: 'checking', error: undefined }))
   autoUpdater.on('update-available', (info: UpdateInfo) => {
@@ -174,6 +219,15 @@ export function initUpdater(): void {
     const msg = e instanceof Error ? e.message : String(e)
     ulog(`error: ${msg}`)
     push({ status: 'error', error: msg.slice(0, 300), checkedAt: Date.now() })
+    // One retry, once per session. A launch-time failure (started before Wi-Fi
+    // associated) otherwise also prevents an installer staged by an EARLIER
+    // session from applying: electron-updater registers its quit handler only
+    // when a download completes, so autoInstallOnAppQuit is inert in a session
+    // whose check never succeeded.
+    if (!retryArmed) {
+      retryArmed = true
+      setTimeout(() => void checkForUpdatesNow('startup'), 5 * 60_000).unref?.()
+    }
   })
 
   void checkForUpdatesNow('startup')

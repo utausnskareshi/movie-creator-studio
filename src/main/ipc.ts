@@ -27,7 +27,7 @@ import {
   isEngineInstallActive
 } from './setup/installer'
 import { llmManager } from './llm/manager'
-import { cancelDownload, DownloadCancelledError, isDownloadActive } from './core/downloader'
+import { cancelDownload, DownloadCancelledError, hasActiveDownload, isDownloadActive } from './core/downloader'
 import { MODEL_PACKS, allModelFiles } from './models/registry'
 import { comfyManager } from './comfyui/manager'
 import { checkForUpdatesNow, getUpdaterState, installUpdateNow, isApplyingUpdate } from './updater'
@@ -94,6 +94,11 @@ export function registerIpc(): void {
   ipcMain.handle(IPC.getSetupStatus, () => getSetupStatus())
   ipcMain.handle(IPC.getModelCatalog, () => MODEL_PACKS)
   ipcMain.handle(IPC.installComponent, async (_e, component: SetupComponent) => {
+    // reverse gate: once the app has committed to quitting, a pip/extract child
+    // started here would be orphaned mid-write when the process exits
+    if (isApplyingUpdate()) {
+      throw new Error('アプリの更新を適用中です。再起動後にもう一度お試しください。')
+    }
     ensureDirs()
     let last: DownloadProgress | null = null
     const cb = (p: DownloadProgress): void => {
@@ -128,7 +133,23 @@ export function registerIpc(): void {
         llmManager.stop()
         await installLlm(cb)
       } else if (component.startsWith('customnode:')) {
-        await installCustomNode(component.slice('customnode:'.length), cb)
+        // A node install writes INTO the engine tree (pip into the embedded
+        // site-packages, files into custom_nodes) — the same tree an engine
+        // update renames away, and whose processes killProcessesUnder() kills,
+        // which would take this pip child with it. The setup screen allows
+        // both at once (pack: and install: busy keys are separate), so guard
+        // here and hold the gate for the duration.
+        if (isEngineInstallActive()) {
+          throw new Error(
+            'エンジンのインストール・更新の実行中はカスタムノードを追加できません。完了後にもう一度お試しください。'
+          )
+        }
+        beginEngineInstallGate()
+        try {
+          await installCustomNode(component.slice('customnode:'.length), cb)
+        } finally {
+          endEngineInstallGate()
+        }
         // the engine only scans custom_nodes at startup — without this the
         // freshly installed node is invisible and the first generation fails.
         // Never mid-job though: killing a 20-minute render because a node for
@@ -201,6 +222,9 @@ export function registerIpc(): void {
   }
 
   ipcMain.handle(IPC.downloadModelFiles, async (_e, fileIds: string[], packKey?: string) => {
+    if (isApplyingUpdate()) {
+      throw new Error('アプリの更新を適用中です。再起動後にもう一度お試しください。')
+    }
     ensureDirs()
     // the pack card this call belongs to (cancel intents are scoped to it)
     const scope = typeof packKey === 'string' && packKey ? packKey : fileIds.join('|')
@@ -362,7 +386,22 @@ export function registerIpc(): void {
 
   // --- engine ------------------------------------------------------------------
   ipcMain.handle(IPC.getEngineStatus, () => comfyManager.getStatus())
-  ipcMain.handle(IPC.startEngine, () => comfyManager.start())
+  ipcMain.handle(IPC.startEngine, () => {
+    // Mirror of the enqueue/startExport gates. This is the ONLY other path that
+    // can spawn the engine, and its child's cwd is inside engineDir() — exactly
+    // the orphan that makes the next「エンジンを更新」fail with EPERM. The 設定
+    // screen's 起動 button is enabled throughout an engine replacement (the
+    // installer stopped the engine, so its state reads 'stopped').
+    if (isEngineInstallActive()) {
+      throw new Error(
+        'エンジンのインストール・更新の実行中は起動できません。完了後にもう一度お試しください。'
+      )
+    }
+    if (isApplyingUpdate()) {
+      throw new Error('アプリの更新を適用中です。再起動後にもう一度お試しください。')
+    }
+    return comfyManager.start()
+  })
   ipcMain.handle(IPC.stopEngine, () => comfyManager.stop())
   comfyManager.onStatus((s) => broadcast(IPC.evEngineStatus, s))
 
@@ -441,6 +480,11 @@ export function registerIpc(): void {
     }
     if (hasActiveExport()) {
       throw new Error(`書き出しの実行中は更新の適用はできません。完了後にもう一度お試しください。${later}`)
+    }
+    // model packs run for hours over tens of GB; quitting severs every in-flight
+    // range request and nothing auto-resumes on relaunch
+    if (hasActiveDownload()) {
+      throw new Error(`ダウンロードの実行中は更新の適用はできません。完了後にもう一度お試しください。${later}`)
     }
     // quitting mid engine-extract would leave a half-written engine tree
     // (recoverable, but pointlessly so)

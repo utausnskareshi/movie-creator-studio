@@ -693,7 +693,13 @@ function UpdaterCard(): React.JSX.Element {
   }, [])
 
   if (!st) return <div className="text-xs text-slate-500">状態を取得中…</div>
-  const busy = st.status === 'checking' || st.status === 'downloading'
+  // must match checkForUpdatesNow's own busy set, or the button is enabled for
+  // a call that returns without doing anything (a dead click)
+  const busy =
+    st.status === 'checking' ||
+    st.status === 'downloading' ||
+    st.status === 'downloaded' ||
+    st.status === 'applying'
   const checkedAt = st.checkedAt
     ? new Date(st.checkedAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
     : null
@@ -707,7 +713,13 @@ function UpdaterCard(): React.JSX.Element {
           <button
             className="btn-ghost text-xs px-3 py-1"
             disabled={busy}
-            title={busy ? '確認・ダウンロード中です' : 'GitHub の最新リリースと照合します'}
+            title={
+              st.status === 'downloaded' || st.status === 'applying'
+                ? '更新はダウンロード済みです(再起動で適用されます)'
+                : busy
+                  ? '確認・ダウンロード中です'
+                  : 'GitHub の最新リリースと照合します'
+            }
             onClick={() => void window.mcs.checkForUpdates().catch((e) => alert(cleanError(e)))}
           >
             {st.status === 'downloading'
@@ -721,9 +733,10 @@ function UpdaterCard(): React.JSX.Element {
             (開発実行では無効です — インストール版で利用できます)
           </span>
         )}
-        {st.status === 'downloaded' && (
+        {(st.status === 'downloaded' || st.status === 'applying') && (
           <button
             className="btn-primary text-xs px-3 py-1"
+            disabled={st.status === 'applying'}
             onClick={() => {
               // the main side refuses mid-generation — surface that reason
               // instead of letting the rejection vanish into the console
@@ -756,6 +769,11 @@ function UpdaterCard(): React.JSX.Element {
       {st.status === 'downloaded' && (
         <div className="text-xs text-emerald-400">
           ✅ v{st.latestVersion} の準備ができました — アプリ終了時に自動適用されます(上のボタンで今すぐ適用も可)
+        </div>
+      )}
+      {st.status === 'applying' && (
+        <div className="text-xs text-slate-300">
+          ⏳ 更新を適用中… エンジンを停止しています。まもなくアプリが再起動します
         </div>
       )}
       {st.status === 'error' && (

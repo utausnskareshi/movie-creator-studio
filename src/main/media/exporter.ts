@@ -23,10 +23,16 @@ export function cancelAllExports(): void {
   activeExports.clear()
 }
 
-/** true while any export is encoding (used to refuse quit-to-update) */
+/** true while any export is encoding OR still being prepared */
 export function hasActiveExport(): boolean {
-  return activeExports.size > 0
+  return activeExports.size > 0 || pendingExports > 0
 }
+
+// probing every clip and detecting NVENC takes seconds on a multi-clip project.
+// Until activeExports gets its entry an export is invisible, so quit-to-update
+// would pass its guard, quit, and run cancelAllExports() over an empty map —
+// orphaning the ffmpeg.exe spawned moments later.
+let pendingExports = 0
 
 const FONT_CANDIDATES = [
   'C:/Windows/Fonts/meiryo.ttc',
@@ -40,6 +46,15 @@ function findFont(): string | null {
 }
 
 export async function startExport(req: ExportRequest, cb: ProgressCb): Promise<string> {
+  pendingExports += 1
+  try {
+    return await doStartExport(req, cb)
+  } finally {
+    pendingExports -= 1
+  }
+}
+
+async function doStartExport(req: ExportRequest, cb: ProgressCb): Promise<string> {
   const exportId = randomUUID().slice(0, 8)
   const records = new Map<string, VideoRecord>()
   for (const c of req.project.clips) {

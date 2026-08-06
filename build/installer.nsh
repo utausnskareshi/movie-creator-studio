@@ -270,12 +270,15 @@
 ; ため。ルート自体は空になった場合のみ削除する。
 !macro MCS_DELETE_DATA_SUBDIRS ROOT
   RMDir /r "${ROOT}\engine"
-  ; エンジン更新の「リネーム退避」が削除しきれなかった残骸(engine.__old-<ts>)。
+  ; エンジン更新の「リネーム退避」が削除しきれなかった残骸(~eng1, ~eng2 …)。
   ; アプリ側でも起動時に掃除するが、掃除前にアンインストールされた場合に
-  ; ここで確実に回収しないと「完全削除」後もルートが空にならず残ってしまう
+  ; ここで確実に回収しないと「完全削除」後もルートが空にならず残ってしまう。
+  ; 名前は src/main/setup/installer.ts の GRAVEYARD_PREFIX と対。"engine" より
+  ; 短い名前なのは、退避でパスが伸びて RMDir /r の 260 文字上限を超えるのを
+  ; 防ぐため(既定構成での実測: 最深 250 文字)。
   Push $R3
   Push $R4
-  FindFirst $R3 $R4 "${ROOT}\engine.__old-*"
+  FindFirst $R3 $R4 "${ROOT}\~eng*"
   ${Do}
     ${If} $R4 == ""
       ${ExitDo}
@@ -305,7 +308,10 @@
   RMDir "${ROOT}"
 !macroend
 
-; ${ROOT} の実行フォルダ(engine/llm/ffmpeg)配下から起動中のプロセスを停止。
+; ${ROOT} の実行フォルダ(engine / 退避 ~eng* / llm / ffmpeg)配下から起動中の
+; プロセスを停止。退避フォルダを含めるのは、リネーム後の孤児 python.exe は
+; Windows 上「~engN\...」配下として報告され、engine\ 前置きでは一致しないため
+; (それが残ると退避フォルダを削除できず「完全削除」が不完全になる)。
 ;
 ; パスは環境変数で「データとして」渡し、PowerShell のスクリプト本文には
 ; 一切埋め込まない。以前は -Command の単一引用符内へ生挿入していたため、
@@ -318,7 +324,7 @@
 ;     `$$` は NSIS では文字 `$` そのもの(PowerShell 変数用)。
 !macro MCS_KILL_DATA_PROCESSES ROOT
   System::Call 'kernel32::SetEnvironmentVariable(t "MCS_DATA_ROOT", t "${ROOT}")i.r3'
-  nsExec::Exec `powershell -NoProfile -Command "$$r = $$env:MCS_DATA_ROOT; if ($$r) { Get-CimInstance Win32_Process | Where-Object { $$_.ExecutablePath -and ($$_.ExecutablePath.StartsWith(($$r.TrimEnd('\') + '\engine\'), 'OrdinalIgnoreCase') -or $$_.ExecutablePath.StartsWith(($$r.TrimEnd('\') + '\llm\'), 'OrdinalIgnoreCase') -or $$_.ExecutablePath.StartsWith(($$r.TrimEnd('\') + '\ffmpeg\'), 'OrdinalIgnoreCase')) } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue } }"`
+  nsExec::Exec `powershell -NoProfile -Command "$$r = $$env:MCS_DATA_ROOT; if ($$r) { Get-CimInstance Win32_Process | Where-Object { $$_.ExecutablePath -and ($$_.ExecutablePath.StartsWith(($$r.TrimEnd('\') + '\engine\'), 'OrdinalIgnoreCase') -or $$_.ExecutablePath.StartsWith(($$r.TrimEnd('\') + '\~eng'), 'OrdinalIgnoreCase') -or $$_.ExecutablePath.StartsWith(($$r.TrimEnd('\') + '\llm\'), 'OrdinalIgnoreCase') -or $$_.ExecutablePath.StartsWith(($$r.TrimEnd('\') + '\ffmpeg\'), 'OrdinalIgnoreCase')) } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue } }"`
   Pop $3
   System::Call 'kernel32::SetEnvironmentVariable(t "MCS_DATA_ROOT", i 0)i.r3'
 !macroend

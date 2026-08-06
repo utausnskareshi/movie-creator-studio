@@ -1,6 +1,6 @@
 import { execFile, spawn } from 'child_process'
 import { promisify } from 'util'
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, renameSync, rmSync, copyFileSync } from 'fs'
+import { appendFileSync, existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, renameSync, rmSync, copyFileSync } from 'fs'
 import { rm } from 'fs/promises'
 import { dirname, join } from 'path'
 import { path7za } from '7zip-bin'
@@ -17,6 +17,7 @@ import {
   comfyMain,
   comfyPython,
   comfyRoot,
+  configDir,
   customNodesDir,
   engineDir,
   ffmpegDir,
@@ -276,9 +277,37 @@ export function installComfyUI(cb: ProgressCb): Promise<void> {
  * graveyard sitting for months. Async so the startup call never blocks the
  * main process; failures are ignored — the next sweep tries again.
  */
+/** logs/engine-install.log — engine replacement is otherwise undiagnosable. */
+function engineLog(line: string): void {
+  try {
+    const dir = join(configDir(), 'logs')
+    mkdirSync(dir, { recursive: true })
+    appendFileSync(join(dir, 'engine-install.log'), `${new Date().toISOString()} ${line}\n`)
+  } catch {
+    // logging must never break an install
+  }
+}
+
+/**
+ * Graveyard folders are named "~engN" — deliberately SHORTER than "engine"
+ * (5 chars vs 6) so renaming can only shrink the paths inside. The obvious
+ * "engine.__old-<epoch>" grew every descendant by 20 characters, and the
+ * deepest real path under a default install measures 250 — past NSIS's 260
+ * MAX_PATH limit, which would leave the uninstaller unable to delete it.
+ */
+const GRAVEYARD_PREFIX = '~eng'
+
+function nextGraveyardPath(): string {
+  const parent = dirname(engineDir())
+  for (let i = 1; i < 1000; i++) {
+    const p = join(parent, `${GRAVEYARD_PREFIX}${i}`)
+    if (!existsSync(p)) return p
+  }
+  return join(parent, `${GRAVEYARD_PREFIX}${Date.now() % 100000}`)
+}
+
 export async function sweepOldEngineDirs(): Promise<void> {
   const parent = dirname(engineDir())
-  const base = `${engineDir().split(/[\\/]/).pop()}.__old-`
   let names: string[]
   try {
     names = readdirSync(parent)
@@ -286,9 +315,15 @@ export async function sweepOldEngineDirs(): Promise<void> {
     return // parent unreadable — nothing to sweep
   }
   for (const name of names) {
-    if (!name.startsWith(base)) continue
+    if (!name.startsWith(GRAVEYARD_PREFIX)) continue
+    const dir = join(parent, name)
     try {
-      await rm(join(parent, name), { recursive: true, force: true, maxRetries: 3, retryDelay: 200 })
+      // A graveyard exists ONLY because a delete lost to a lock — i.e. because
+      // something is still running inside it. After the rename Windows reports
+      // that process under the NEW path, so killProcessesUnder(engineDir())
+      // from any later update can never match it; kill under the graveyard.
+      await killProcessesUnder(dir)
+      await rm(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 })
     } catch {
       // still locked — leave it for the next sweep
     }
@@ -318,20 +353,26 @@ async function killProcessesUnder(root: string): Promise<void> {
       ],
       { env: { ...process.env, MCS_KILL_ROOT: prefix }, windowsHide: true, stdio: 'ignore' }
     )
+    const done = (info: string): void => {
+      clearTimeout(timer)
+      // Without this line a kill sweep that never ran (Defender ASR blocking
+      // WMI process creation, AppLocker, ConstrainedLanguage mode breaking the
+      // [System.StringComparison] cast) is indistinguishable from "nothing to
+      // kill" — and the only evidence left on the machine is an undeletable
+      // 7GB folder.
+      engineLog(`kill under ${prefix}: ${info}`)
+      resolve()
+    }
     const timer = setTimeout(() => {
       try {
         ps.kill()
       } catch {
         /* already gone */
       }
-      resolve()
+      done('timed out after 20s')
     }, 20_000)
-    const done = (): void => {
-      clearTimeout(timer)
-      resolve()
-    }
-    ps.on('exit', done)
-    ps.on('error', done)
+    ps.on('exit', (code) => done(`exit=${code}`))
+    ps.on('error', (e) => done(`powershell unavailable: ${e.message}`))
   })
   // Windows releases file/directory handles slightly after process death
   await new Promise((r) => setTimeout(r, 500))
@@ -393,23 +434,32 @@ async function doInstallComfyUI(cb: ProgressCb): Promise<void> {
     //     non-fatal and swept on the next engine install/update
     cb(progress('comfyui', '旧エンジンを停止・削除中', 'extracting'))
     await killProcessesUnder(engineDir())
-    const graveyard = `${engineDir()}.__old-${Date.now()}`
-    let wipeTarget = engineDir()
+    const graveyard = nextGraveyardPath()
+    let renamed = false
     try {
       renameSync(engineDir(), graveyard)
-      wipeTarget = graveyard
+      renamed = true
     } catch {
       // rename blocked = a handle on the directory itself; fall back to
       // deleting in place (retries below may still win)
     }
-    try {
-      // ASYNC rm, never rmSync: deleting the ~7GB tree takes seconds even
-      // when it succeeds (実測6.2秒), and each retry adds 400ms — a sync
-      // call blocks the main process for all of it, freezing the window and
-      // starving the progress IPC that tells the user what is happening.
-      await rm(wipeTarget, { recursive: true, force: true, maxRetries: 15, retryDelay: 400 })
-    } catch (e) {
-      if (wipeTarget === engineDir()) {
+    if (renamed) {
+      // The rename already freed the extract path and a leftover graveyard is
+      // explicitly non-fatal, so DO NOT await this: with one locked descendant
+      // rm retries for as long as the lock lives (実測119秒超), and every one
+      // of those seconds would be spent parked on「旧エンジンを停止・削除中」
+      // with nothing for the user to do. sweepOldEngineDirs() collects
+      // whatever is left on a later run.
+      void rm(graveyard, { recursive: true, force: true, maxRetries: 15, retryDelay: 400 }).catch(
+        () => undefined
+      )
+    } else {
+      try {
+        // ASYNC rm, never rmSync: deleting the ~7GB tree takes seconds even
+        // when it succeeds (実測6.2秒) and a sync call blocks the main process
+        // for all of it, freezing the window and starving the progress IPC.
+        await rm(engineDir(), { recursive: true, force: true, maxRetries: 15, retryDelay: 400 })
+      } catch (e) {
         // the extract path is still occupied — this attempt cannot proceed
         const code = (e as NodeJS.ErrnoException)?.code ?? ''
         throw new Error(
@@ -418,9 +468,6 @@ async function doInstallComfyUI(cb: ProgressCb): Promise<void> {
             'ウイルス対策ソフトのスキャン中の場合は1〜2分待ってから、もう一度「エンジンを更新」を押してください。'
         )
       }
-      // renamed graveyard couldn't be fully deleted (lingering lock) — the
-      // extract path is free, so proceed; sweepOldEngineDirs() collects it
-      // on a later run
     }
   }
   await extract7z(archive, engineDir())
