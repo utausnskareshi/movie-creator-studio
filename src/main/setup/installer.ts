@@ -242,6 +242,48 @@ export function installComfyUI(cb: ProgressCb): Promise<void> {
   return exclusive('comfyui', () => doInstallComfyUI(cb))
 }
 
+/**
+ * Kill any process still executing from inside `root` (trailing separator is
+ * enforced so "engine" can never match an "engine2" sibling). The path
+ * travels as an environment variable — data, not script text — so spaces or
+ * quotes in the folder name cannot break the command (same pattern as the
+ * uninstaller's MCS_KILL_DATA_PROCESSES). Never throws; a kill failure just
+ * leaves the subsequent delete to surface its own, clearer error.
+ */
+async function killProcessesUnder(root: string): Promise<void> {
+  const prefix = root.endsWith('\\') || root.endsWith('/') ? root : `${root}\\`
+  await new Promise<void>((resolve) => {
+    const ps = spawn(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-Command',
+        '$root = $env:MCS_KILL_ROOT; if ($root) { Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop } catch {} } }'
+      ],
+      { env: { ...process.env, MCS_KILL_ROOT: prefix }, windowsHide: true, stdio: 'ignore' }
+    )
+    const timer = setTimeout(() => {
+      try {
+        ps.kill()
+      } catch {
+        /* already gone */
+      }
+      resolve()
+    }, 20_000)
+    const done = (): void => {
+      clearTimeout(timer)
+      resolve()
+    }
+    ps.on('exit', done)
+    ps.on('error', done)
+  })
+  // Windows releases file/directory handles slightly after process death
+  await new Promise((r) => setTimeout(r, 500))
+}
+
 async function doInstallComfyUI(cb: ProgressCb): Promise<void> {
   // already on the pinned version — nothing to do (the same button doubles
   // as the「エンジンを更新」action when the pin moves with an app update)
@@ -275,7 +317,26 @@ async function doInstallComfyUI(cb: ProgressCb): Promise<void> {
     existsSync(join(customNodesDir(), n.id))
   ).map((n) => n.id)
   if (existsSync(engineDir())) {
-    rmSync(engineDir(), { recursive: true, force: true })
+    // The wipe used to be a bare rmSync and failed with EPERM on real
+    // machines(実機: 上書きインストール直後の「エンジンを更新」)。causes:
+    //  - an overwrite-install closes the app but can orphan the engine child
+    //    (python.exe keeps running from inside engineDir and holds it)
+    //  - AV/indexer transient locks while walking the ~7GB tree
+    // So: kill anything still executing from the folder, then delete with
+    // retries (Node retries EPERM/EBUSY/ENOTEMPTY on Windows when maxRetries
+    // is set). If it STILL fails, tell the user what actually helps.
+    cb(progress('comfyui', '旧エンジンを停止・削除中', 'extracting'))
+    await killProcessesUnder(engineDir())
+    try {
+      rmSync(engineDir(), { recursive: true, force: true, maxRetries: 15, retryDelay: 400 })
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException)?.code ?? ''
+      throw new Error(
+        `旧エンジンフォルダを削除できませんでした(${code || 'エラー'}: ${engineDir()})。` +
+          'エクスプローラーやコマンドプロンプトでこのフォルダを開いている場合は閉じ、' +
+          'ウイルス対策ソフトのスキャン中の場合は1〜2分待ってから、もう一度「エンジンを更新」を押してください。'
+      )
+    }
   }
   await extract7z(archive, engineDir())
   rmSync(archive, { force: true })

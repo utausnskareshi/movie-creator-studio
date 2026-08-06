@@ -101,6 +101,13 @@ export function registerIpc(): void {
       // (re)installing over a RUNNING process would hit locked exe/dll files
       // mid-extract — stop the corresponding runtime first
       if (component === 'comfyui') {
+        // an engine wipe mid-generation would kill the running render AND
+        // fail on locked files — refuse up front with a clear reason
+        if (jobQueue.hasActive()) {
+          throw new Error(
+            '生成の実行中はエンジンのインストール・更新はできません。生成の完了(または中止)後にもう一度お試しください。'
+          )
+        }
         await comfyManager.stop().catch(() => undefined)
         await installComfyUI(cb)
       } else if (component === 'ffmpeg') await installFfmpeg(cb)
