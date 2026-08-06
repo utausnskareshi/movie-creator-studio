@@ -270,6 +270,22 @@
 ; ため。ルート自体は空になった場合のみ削除する。
 !macro MCS_DELETE_DATA_SUBDIRS ROOT
   RMDir /r "${ROOT}\engine"
+  ; エンジン更新の「リネーム退避」が削除しきれなかった残骸(engine.__old-<ts>)。
+  ; アプリ側でも起動時に掃除するが、掃除前にアンインストールされた場合に
+  ; ここで確実に回収しないと「完全削除」後もルートが空にならず残ってしまう
+  Push $R3
+  Push $R4
+  FindFirst $R3 $R4 "${ROOT}\engine.__old-*"
+  ${Do}
+    ${If} $R4 == ""
+      ${ExitDo}
+    ${EndIf}
+    RMDir /r "${ROOT}\$R4"
+    FindNext $R3 $R4
+  ${Loop}
+  FindClose $R3
+  Pop $R4
+  Pop $R3
   RMDir /r "${ROOT}\models"
   RMDir /r "${ROOT}\ffmpeg"
   RMDir /r "${ROOT}\llm"

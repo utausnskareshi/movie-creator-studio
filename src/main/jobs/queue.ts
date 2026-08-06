@@ -8,6 +8,7 @@ import { comfyManager } from '../comfyui/manager'
 import { buildGraph, type InputRefs } from '../comfyui/graphs'
 import { engineOutputDir, libraryDir, modelsDir, tempDir, thumbsDir } from '../core/paths'
 import { allModelFiles } from '../models/registry'
+import { isEngineInstallActive } from '../setup/installer'
 import { library } from '../library/store'
 import { ffmpegAvailable, fitBlurPadImage, fitCropImage, fitPadBlackImage, makeThumbnail, prepareControlVideo, prepareRefVideo, probe, toWav48k } from '../media/ffmpeg'
 
@@ -183,6 +184,13 @@ class JobQueue {
   enqueue(req: GenerationRequest): string {
     if (!ffmpegAvailable()) {
       throw new Error('ffmpeg is not installed — run setup first')
+    }
+    // a job would boot the engine while the installer is renaming/wiping the
+    // engine tree — mirror of the ipc-side "no engine install during jobs"
+    if (isEngineInstallActive()) {
+      throw new Error(
+        'エンジンのインストール・更新の実行中は生成を開始できません。完了後にもう一度お試しください。'
+      )
     }
     sanitizeRequest(req)
     const missing = missingFiles(req)

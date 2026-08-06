@@ -720,7 +720,11 @@ function UpdaterCard(): React.JSX.Element {
         {st.status === 'downloaded' && (
           <button
             className="btn-primary text-xs px-3 py-1"
-            onClick={() => void window.mcs.installUpdate()}
+            onClick={() => {
+              // the main side refuses mid-generation — surface that reason
+              // instead of letting the rejection vanish into the console
+              void window.mcs.installUpdate().catch((e) => alert(cleanError(e)))
+            }}
           >
             ⚡ 今すぐ再起動して更新
           </button>

@@ -1,6 +1,7 @@
 import { execFile, spawn } from 'child_process'
 import { promisify } from 'util'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, renameSync, rmSync, copyFileSync } from 'fs'
+import { rm } from 'fs/promises'
 import { dirname, join } from 'path'
 import { path7za } from '7zip-bin'
 import type { DownloadProgress, SetupStatus } from '@shared/types'
@@ -238,30 +239,49 @@ function findFileRecursive(root: string, name: string): string | null {
 // ComfyUI portable
 // ---------------------------------------------------------------------------
 
+// The queue refuses new generations while this is true: a job would boot the
+// engine mid-wipe (rename/extract collide with a fresh python.exe). The
+// reverse guard (no engine install while a job runs) lives in ipc.ts.
+let engineInstallActive = false
+export function isEngineInstallActive(): boolean {
+  return engineInstallActive
+}
+
 export function installComfyUI(cb: ProgressCb): Promise<void> {
-  return exclusive('comfyui', () => doInstallComfyUI(cb))
+  return exclusive('comfyui', async () => {
+    engineInstallActive = true
+    try {
+      await doInstallComfyUI(cb)
+    } finally {
+      engineInstallActive = false
+    }
+  })
 }
 
 /**
  * Best-effort cleanup of renamed-aside engine trees (engine.__old-*) left by
  * a previous update whose delete lost a race against a lingering lock. Runs
- * at the start of every engine install/update; failures are ignored — the
- * next run tries again.
+ * at the start of every engine install/update AND (deferred) at app startup —
+ * the already-on-pin early return means updates alone could leave a ~7GB
+ * graveyard sitting for months. Async so the startup call never blocks the
+ * main process; failures are ignored — the next sweep tries again.
  */
-function sweepOldEngineDirs(): void {
+export async function sweepOldEngineDirs(): Promise<void> {
   const parent = dirname(engineDir())
   const base = `${engineDir().split(/[\\/]/).pop()}.__old-`
+  let names: string[]
   try {
-    for (const entry of readdirSync(parent, { withFileTypes: true })) {
-      if (!entry.isDirectory() || !entry.name.startsWith(base)) continue
-      try {
-        rmSync(join(parent, entry.name), { recursive: true, force: true, maxRetries: 3, retryDelay: 200 })
-      } catch {
-        // still locked — leave it for the next sweep
-      }
-    }
+    names = readdirSync(parent)
   } catch {
-    // parent unreadable — nothing to sweep
+    return // parent unreadable — nothing to sweep
+  }
+  for (const name of names) {
+    if (!name.startsWith(base)) continue
+    try {
+      await rm(join(parent, name), { recursive: true, force: true, maxRetries: 3, retryDelay: 200 })
+    } catch {
+      // still locked — leave it for the next sweep
+    }
   }
 }
 
@@ -339,7 +359,7 @@ async function doInstallComfyUI(cb: ProgressCb): Promise<void> {
   const nodesToRestore = CUSTOM_NODES.filter((n) =>
     existsSync(join(customNodesDir(), n.id))
   ).map((n) => n.id)
-  sweepOldEngineDirs()
+  await sweepOldEngineDirs()
   if (existsSync(engineDir())) {
     // The wipe used to be a bare rmSync and failed with EPERM on real
     // machines(実機: 上書きインストール直後の「エンジンを更新」で再現)。

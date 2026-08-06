@@ -413,7 +413,16 @@ export function registerIpc(): void {
   // --- app update ------------------------------------------------------------------
   ipcMain.handle(IPC.getUpdaterState, () => getUpdaterState())
   ipcMain.handle(IPC.checkForUpdates, () => checkForUpdatesNow('manual'))
-  ipcMain.handle(IPC.installUpdate, () => installUpdateNow())
+  ipcMain.handle(IPC.installUpdate, () => {
+    // quitAndInstall exits the app — mid-render it would kill the job the
+    // same way the engine-update wipe would (same rule, same wording style)
+    if (jobQueue.hasActive()) {
+      throw new Error(
+        '生成の実行中は更新の適用はできません。生成の完了(または中止)後にもう一度お試しください。(更新はアプリ終了時にも自動適用されます)'
+      )
+    }
+    installUpdateNow()
+  })
 
   // --- dialogs / shell -------------------------------------------------------------
   // pickers open at the last-used folder (per type), initially the library

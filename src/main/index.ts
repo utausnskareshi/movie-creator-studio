@@ -4,6 +4,7 @@ import { appendFileSync, mkdirSync } from 'fs'
 import { pathToFileURL } from 'url'
 import { registerIpc } from './ipc'
 import { initUpdater } from './updater'
+import { sweepOldEngineDirs } from './setup/installer'
 import { ensureDirs } from './core/paths'
 import { DEFAULT_DATA_DIR, updateSettings, writeDataDirMarker } from './core/settings'
 import { comfyManager } from './comfyui/manager'
@@ -152,6 +153,12 @@ app.whenReady().then(() => {
   // 温存する — build/installer.nsh)。旧実装の動的 import が named export を
   // 取れず更新機能が黙って無効化されていた経緯は src/main/updater.ts 参照。
   initUpdater()
+
+  // 前回のエンジン更新が削除しきれなかった退避フォルダ(engine.__old-*)の
+  // 掃除。起動処理をブロックしないよう遅延起動・非同期で行う
+  setTimeout(() => {
+    void sweepOldEngineDirs()
+  }, 5000)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
