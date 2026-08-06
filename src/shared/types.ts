@@ -411,6 +411,29 @@ export interface ExportProgress {
 // IPC surface
 // ---------------------------------------------------------------------------
 
+export type UpdaterStatus =
+  | 'idle'
+  | 'checking'
+  | 'not-available'
+  | 'downloading'
+  | 'downloaded'
+  | 'error'
+
+export interface UpdaterState {
+  /** packaged build with the update feed enabled (dev runs show the UI disabled) */
+  supported: boolean
+  currentVersion: string
+  status: UpdaterStatus
+  /** feed version once known (also set when already up to date) */
+  latestVersion?: string
+  /** download progress 0-100 (meaningful while status='downloading') */
+  percent?: number
+  /** short failure text (full detail in logs/updater.log) */
+  error?: string
+  /** when the last check finished (not-available / downloaded / error) */
+  checkedAt?: number
+}
+
 export interface McsApi {
   // env & settings
   getEnv(): Promise<EnvInfo>
@@ -455,6 +478,13 @@ export interface McsApi {
   // prompt conversion (local CPU LLM)
   llmTranslate(family: ModelFamily, japaneseText: string): Promise<string>
 
+  // app update (electron-updater / GitHub Releases)
+  getUpdaterState(): Promise<UpdaterState>
+  /** manual "check now"; resolves with the state right after the check kicks off */
+  checkForUpdates(): Promise<UpdaterState>
+  /** quit + silent-install the downloaded update, then relaunch */
+  installUpdate(): Promise<void>
+  onUpdaterState(cb: (s: UpdaterState) => void): () => void
 
   // dialogs & misc
   pickImage(): Promise<string | null>
@@ -496,6 +526,10 @@ export const IPC = {
   cancelExport: 'export:cancel',
   evExportProgress: 'ev:export-progress',
   llmTranslate: 'llm:translate',
+  getUpdaterState: 'updater:state',
+  checkForUpdates: 'updater:check',
+  installUpdate: 'updater:install',
+  evUpdaterState: 'ev:updater-state',
   pickImage: 'dialog:pick-image',
   pickAudio: 'dialog:pick-audio',
   pickVideo: 'dialog:pick-video',

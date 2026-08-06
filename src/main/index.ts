@@ -3,7 +3,8 @@ import { join } from 'path'
 import { appendFileSync, mkdirSync } from 'fs'
 import { pathToFileURL } from 'url'
 import { registerIpc } from './ipc'
-import { configDir, ensureDirs } from './core/paths'
+import { initUpdater } from './updater'
+import { ensureDirs } from './core/paths'
 import { DEFAULT_DATA_DIR, updateSettings, writeDataDirMarker } from './core/settings'
 import { comfyManager } from './comfyui/manager'
 import { llmManager } from './llm/manager'
@@ -33,12 +34,6 @@ protocol.registerSchemesAsPrivileged([
     privileges: { standard: false, secure: true, supportFetchAPI: true, stream: true, bypassCSP: true }
   }
 ])
-
-// GitHub 公開準備として有効化(electron-builder.yml の publish が指す
-// utausnskareshi/movie-creator-studio の GitHub Releases を参照する)。
-// リポジトリ/リリースが未公開の間はチェックが失敗するだけで、下の catch が
-// 握りつぶすため起動やUIには影響しない。
-const AUTO_UPDATE_ENABLED = true
 
 let mainWindow: BrowserWindow | null = null
 
@@ -150,38 +145,13 @@ app.whenReady().then(() => {
   // keep the uninstaller's data-location marker current from first launch
   writeDataDirMarker()
 
-  // Auto-update via GitHub Releases(packaged builds のみ)。新しいリリースが
-  // あればバックグラウンドでダウンロードし、通知を表示、アプリ終了時に適用。
-  // 更新経路のアンインストール(${isUpdated})はデータ・ユーザーファイルを
-  // 温存する(build/installer.nsh の customUnInstall / customRemoveFiles)。
-  if (app.isPackaged && AUTO_UPDATE_ENABLED) {
-    void import('electron-updater')
-      .then(({ autoUpdater }) => {
-        // 'error' は必ず購読する: electron-updater は失敗時に emit("error") を
-        // 無条件で発火し(AppUpdater.js)、リスナーの無い EventEmitter の
-        // 'error' は例外になる。リリース未公開・オフラインでは失敗が正常系
-        // なので、クラッシュログではなく logs/updater.log に1行記録するだけに
-        // とどめる(公開後のフィード不備の調査にも使える)。
-        const ulog = (line: string): void => {
-          try {
-            const dir = join(configDir(), 'logs')
-            mkdirSync(dir, { recursive: true })
-            appendFileSync(join(dir, 'updater.log'), `${new Date().toISOString()} ${line}\n`)
-          } catch {
-            // ログ書き込みの失敗が起動に影響してはならない
-          }
-        }
-        autoUpdater.on('error', (e) => ulog(`error: ${e instanceof Error ? e.message : String(e)}`))
-        autoUpdater.on('update-available', (info) => ulog(`update-available: ${info.version}`))
-        autoUpdater.on('update-downloaded', (info) => ulog(`update-downloaded: ${info.version}`))
-        // 通知は日本語で({version}/{appName} は electron-updater が置換)
-        return autoUpdater.checkForUpdatesAndNotify({
-          title: 'Movie Creator Studio の更新',
-          body: '新しいバージョン {version} をダウンロードしました。アプリの終了時に自動的に適用されます。'
-        })
-      })
-      .catch(() => undefined)
-  }
+  // Auto-update via GitHub Releases(packaged builds のみ)。起動時に1回
+  // チェックし、セットアップ画面の「今すぐ更新を確認」からも実行できる。
+  // 新しいリリースはバックグラウンドでダウンロード → 通知 → 終了時に適用
+  // (更新経路のアンインストール ${isUpdated} はデータ・ユーザーファイルを
+  // 温存する — build/installer.nsh)。旧実装の動的 import が named export を
+  // 取れず更新機能が黙って無効化されていた経緯は src/main/updater.ts 参照。
+  initUpdater()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

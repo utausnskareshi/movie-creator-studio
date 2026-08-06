@@ -46,6 +46,11 @@ const api: McsApi = {
 
   llmTranslate: (family, japaneseText) => ipcRenderer.invoke(IPC.llmTranslate, family, japaneseText),
 
+  getUpdaterState: () => ipcRenderer.invoke(IPC.getUpdaterState),
+  checkForUpdates: () => ipcRenderer.invoke(IPC.checkForUpdates),
+  installUpdate: () => ipcRenderer.invoke(IPC.installUpdate),
+  onUpdaterState: on(IPC.evUpdaterState),
+
 
   pickImage: () => ipcRenderer.invoke(IPC.pickImage),
   pickAudio: () => ipcRenderer.invoke(IPC.pickAudio),

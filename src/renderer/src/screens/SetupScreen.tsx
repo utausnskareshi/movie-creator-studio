@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import type { DownloadProgress, ModelPack } from '@shared/types'
+import { useEffect, useMemo, useState } from 'react'
+import type { DownloadProgress, ModelPack, UpdaterState } from '@shared/types'
 import { useApp } from '../store'
 import { fmtBytes, fmtSpeed } from '../lib/format'
 
@@ -524,6 +524,12 @@ export default function SetupScreen(): React.JSX.Element {
         })}
       </section>
 
+      {/* 5. アプリの更新 */}
+      <section className="card p-4 space-y-2">
+        <div className="font-bold text-sm">⑤ アプリの更新</div>
+        <UpdaterCard />
+      </section>
+
       {/* license consent modal */}
       {licensePack && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-8">
@@ -666,6 +672,95 @@ function ComponentRow(props: {
       </div>
       {/* progress renders directly under its own row */}
       {showProgress && <FileProgressRow label={props.progress!.label} d={props.progress!} />}
+    </div>
+  )
+}
+
+/** ⑤ アプリの更新 — 手動チェック + 更新状態の常時表示(main の updater が
+ *  イベントで状態を push する。詳細ログは logs/updater.log)。 */
+function UpdaterCard(): React.JSX.Element {
+  const [st, setSt] = useState<UpdaterState | null>(null)
+  useEffect(() => {
+    let alive = true
+    void window.mcs.getUpdaterState().then((s) => {
+      if (alive) setSt(s)
+    })
+    const off = window.mcs.onUpdaterState((s) => setSt(s))
+    return () => {
+      alive = false
+      off()
+    }
+  }, [])
+
+  if (!st) return <div className="text-xs text-slate-500">状態を取得中…</div>
+  const busy = st.status === 'checking' || st.status === 'downloading'
+  const checkedAt = st.checkedAt
+    ? new Date(st.checkedAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
+    : null
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="text-xs text-slate-300">
+          現在のバージョン: <b>v{st.currentVersion}</b>
+        </span>
+        {st.supported ? (
+          <button
+            className="btn-ghost text-xs px-3 py-1"
+            disabled={busy}
+            title={busy ? '確認・ダウンロード中です' : 'GitHub の最新リリースと照合します'}
+            onClick={() => void window.mcs.checkForUpdates()}
+          >
+            {busy ? '⏳ 確認中…' : '🔄 今すぐ更新を確認'}
+          </button>
+        ) : (
+          <span className="text-[11px] text-slate-500">
+            (開発実行では無効です — インストール版で利用できます)
+          </span>
+        )}
+        {st.status === 'downloaded' && (
+          <button
+            className="btn-primary text-xs px-3 py-1"
+            onClick={() => void window.mcs.installUpdate()}
+          >
+            ⚡ 今すぐ再起動して更新
+          </button>
+        )}
+      </div>
+      {st.status === 'not-available' && (
+        <div className="text-xs text-emerald-400">
+          ✅ 最新版です(v{st.latestVersion ?? st.currentVersion})
+          {checkedAt ? ` — 最終確認 ${checkedAt}` : ''}
+        </div>
+      )}
+      {st.status === 'downloading' && (
+        <div className="space-y-1">
+          <div className="text-xs text-slate-300">
+            ⬇️ 新しいバージョン v{st.latestVersion} をダウンロード中… {st.percent ?? 0}%
+          </div>
+          <div className="h-1.5 bg-panel2 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-sky-500 transition-all"
+              style={{ width: `${st.percent ?? 0}%` }}
+            />
+          </div>
+        </div>
+      )}
+      {st.status === 'downloaded' && (
+        <div className="text-xs text-emerald-400">
+          ✅ v{st.latestVersion} の準備ができました — アプリ終了時に自動適用されます(上のボタンで今すぐ適用も可)
+        </div>
+      )}
+      {st.status === 'error' && (
+        <div className="text-xs text-rose-400">
+          ⚠️ 更新の確認に失敗しました(オフラインの可能性)。
+          {st.error && <span className="text-slate-500"> 詳細: {st.error}</span>}
+        </div>
+      )}
+      {st.supported && (st.status === 'idle' || st.status === 'checking') && (
+        <div className="text-[11px] text-slate-500">
+          起動時に自動確認します。新しいバージョンは自動でダウンロードされ、アプリ終了時に適用されます
+        </div>
+      )}
     </div>
   )
 }

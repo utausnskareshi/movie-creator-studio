@@ -27,6 +27,7 @@ import { llmManager } from './llm/manager'
 import { cancelDownload, DownloadCancelledError, isDownloadActive } from './core/downloader'
 import { MODEL_PACKS, allModelFiles } from './models/registry'
 import { comfyManager } from './comfyui/manager'
+import { checkForUpdatesNow, getUpdaterState, installUpdateNow } from './updater'
 import { jobQueue } from './jobs/queue'
 import { library } from './library/store'
 import { EXPORT_PRESETS } from './media/presets'
@@ -401,6 +402,11 @@ export function registerIpc(): void {
   ipcMain.handle(IPC.llmTranslate, (_e, family: Parameters<typeof llmManager.translate>[0], text: string) =>
     llmManager.translate(family, text)
   )
+
+  // --- app update ------------------------------------------------------------------
+  ipcMain.handle(IPC.getUpdaterState, () => getUpdaterState())
+  ipcMain.handle(IPC.checkForUpdates, () => checkForUpdatesNow('manual'))
+  ipcMain.handle(IPC.installUpdate, () => installUpdateNow())
 
   // --- dialogs / shell -------------------------------------------------------------
   // pickers open at the last-used folder (per type), initially the library
