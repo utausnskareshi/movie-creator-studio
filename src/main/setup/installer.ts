@@ -239,21 +239,31 @@ function findFileRecursive(root: string, name: string): string | null {
 // ComfyUI portable
 // ---------------------------------------------------------------------------
 
-// The queue refuses new generations while this is true: a job would boot the
-// engine mid-wipe (rename/extract collide with a fresh python.exe). The
-// reverse guard (no engine install while a job runs) lives in ipc.ts.
-let engineInstallActive = false
+// The queue refuses new generations while this gate is held: a job would
+// boot the engine mid-wipe (rename/extract collide with a fresh python.exe).
+// A COUNTER, not a boolean: ipc.ts raises the gate BEFORE its own
+// comfyManager.stop() await (several seconds — a boolean set only inside
+// installComfyUI left that window open for enqueues), and the wrapper below
+// raises it again around the actual install. The reverse guard (no engine
+// install while a job runs) lives in ipc.ts.
+let engineInstallGate = 0
 export function isEngineInstallActive(): boolean {
-  return engineInstallActive
+  return engineInstallGate > 0
+}
+export function beginEngineInstallGate(): void {
+  engineInstallGate++
+}
+export function endEngineInstallGate(): void {
+  engineInstallGate = Math.max(0, engineInstallGate - 1)
 }
 
 export function installComfyUI(cb: ProgressCb): Promise<void> {
   return exclusive('comfyui', async () => {
-    engineInstallActive = true
+    beginEngineInstallGate()
     try {
       await doInstallComfyUI(cb)
     } finally {
-      engineInstallActive = false
+      endEngineInstallGate()
     }
   })
 }

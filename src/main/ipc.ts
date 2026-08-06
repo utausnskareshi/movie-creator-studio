@@ -16,12 +16,15 @@ import { dirname, join } from 'path'
 import { allowPickedPath, isOpenPathAllowed } from './core/mediaAccess'
 import { getEnvInfo } from './core/env'
 import {
+  beginEngineInstallGate,
   downloadModelFile,
+  endEngineInstallGate,
   getSetupStatus,
   installComfyUI,
   installCustomNode,
   installFfmpeg,
-  installLlm
+  installLlm,
+  isEngineInstallActive
 } from './setup/installer'
 import { llmManager } from './llm/manager'
 import { cancelDownload, DownloadCancelledError, isDownloadActive } from './core/downloader'
@@ -101,15 +104,25 @@ export function registerIpc(): void {
       // (re)installing over a RUNNING process would hit locked exe/dll files
       // mid-extract — stop the corresponding runtime first
       if (component === 'comfyui') {
-        // an engine wipe mid-generation would kill the running render AND
-        // fail on locked files — refuse up front with a clear reason
-        if (jobQueue.hasActive()) {
-          throw new Error(
-            '生成の実行中はエンジンのインストール・更新はできません。生成の完了(または中止)後にもう一度お試しください。'
-          )
+        // Raise the gate FIRST: comfyManager.stop() below can take several
+        // seconds, and until installComfyUI set its own gate a generation
+        // could slip in and boot the engine mid-wipe. Order matters —
+        // gate up → then reject if a job is already active (an enqueue that
+        // raced past the gate check is caught here by hasActive).
+        beginEngineInstallGate()
+        try {
+          // an engine wipe mid-generation would kill the running render AND
+          // fail on locked files — refuse up front with a clear reason
+          if (jobQueue.hasActive()) {
+            throw new Error(
+              '生成の実行中はエンジンのインストール・更新はできません。生成の完了(または中止)後にもう一度お試しください。'
+            )
+          }
+          await comfyManager.stop().catch(() => undefined)
+          await installComfyUI(cb)
+        } finally {
+          endEngineInstallGate()
         }
-        await comfyManager.stop().catch(() => undefined)
-        await installComfyUI(cb)
       } else if (component === 'ffmpeg') await installFfmpeg(cb)
       else if (component === 'llm') {
         llmManager.stop()
@@ -419,6 +432,13 @@ export function registerIpc(): void {
     if (jobQueue.hasActive()) {
       throw new Error(
         '生成の実行中は更新の適用はできません。生成の完了(または中止)後にもう一度お試しください。(更新はアプリ終了時にも自動適用されます)'
+      )
+    }
+    // quitting mid engine-extract would leave a half-written engine tree
+    // (recoverable, but pointlessly so — the update also applies on quit)
+    if (isEngineInstallActive()) {
+      throw new Error(
+        'エンジンのインストール・更新の実行中は適用できません。完了後にもう一度お試しください。(更新はアプリ終了時にも自動適用されます)'
       )
     }
     installUpdateNow()
