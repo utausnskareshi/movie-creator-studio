@@ -28,6 +28,13 @@ const state: UpdaterState = {
 }
 let notifiedVersion: string | null = null
 let initialized = false
+// true from the moment the user confirms "restart now" until the app exits:
+// the queue refuses new generations so nothing can spawn an engine that would
+// outlive the process (see installUpdateNow).
+let applyingUpdate = false
+export function isApplyingUpdate(): boolean {
+  return applyingUpdate
+}
 
 /** logs/updater.log — the only place update activity is recorded, so every
  *  event writes here (a silent failure must never happen again). */
@@ -94,11 +101,26 @@ export async function checkForUpdatesNow(origin: 'startup' | 'manual'): Promise<
  */
 export async function installUpdateNow(): Promise<void> {
   if (!state.supported || state.status !== 'downloaded') return
+  if (applyingUpdate) return // re-entry (double click) — one shutdown is enough
+  // Raise the gate BEFORE the first await: stopping the engine takes seconds,
+  // and a generation started in that window would spawn a fresh python.exe
+  // moments before the app exits — re-creating the very orphan this function
+  // exists to avoid. Set synchronously so no enqueue can slip through.
+  applyingUpdate = true
   ulog('stopping engines before quitAndInstall')
   llmManager.stop()
   await comfyManager.stop().catch(() => undefined)
   ulog('quitAndInstall (user requested restart)')
   autoUpdater.quitAndInstall(true, true)
+  // quitAndInstall returns without quitting when the staged installer can't
+  // be launched (it neither throws nor reports). If we are still alive after
+  // that, release the gate — otherwise generation stays blocked for the rest
+  // of the session. The update itself is still staged and applies on quit.
+  setTimeout(() => {
+    if (!applyingUpdate) return
+    applyingUpdate = false
+    ulog('still running after quitAndInstall — update not applied now (stays staged for quit)')
+  }, 10_000).unref?.()
 }
 
 export function initUpdater(): void {

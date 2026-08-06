@@ -9,6 +9,7 @@ import { buildGraph, type InputRefs } from '../comfyui/graphs'
 import { engineOutputDir, libraryDir, modelsDir, tempDir, thumbsDir } from '../core/paths'
 import { allModelFiles } from '../models/registry'
 import { isEngineInstallActive } from '../setup/installer'
+import { isApplyingUpdate } from '../updater'
 import { library } from '../library/store'
 import { ffmpegAvailable, fitBlurPadImage, fitCropImage, fitPadBlackImage, makeThumbnail, prepareControlVideo, prepareRefVideo, probe, toWav48k } from '../media/ffmpeg'
 
@@ -191,6 +192,12 @@ class JobQueue {
       throw new Error(
         'エンジンのインストール・更新の実行中は生成を開始できません。完了後にもう一度お試しください。'
       )
+    }
+    // the app is shutting down to apply an update — a job here would spawn an
+    // engine that outlives the process (an orphaned python.exe holds the
+    // engine folder open, which is what breaks the next エンジン更新)
+    if (isApplyingUpdate()) {
+      throw new Error('アプリの更新を適用中です。再起動後にもう一度お試しください。')
     }
     sanitizeRequest(req)
     const missing = missingFiles(req)

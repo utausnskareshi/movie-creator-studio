@@ -30,7 +30,7 @@ import { llmManager } from './llm/manager'
 import { cancelDownload, DownloadCancelledError, isDownloadActive } from './core/downloader'
 import { MODEL_PACKS, allModelFiles } from './models/registry'
 import { comfyManager } from './comfyui/manager'
-import { checkForUpdatesNow, getUpdaterState, installUpdateNow } from './updater'
+import { checkForUpdatesNow, getUpdaterState, installUpdateNow, isApplyingUpdate } from './updater'
 import { jobQueue } from './jobs/queue'
 import { library } from './library/store'
 import { EXPORT_PRESETS } from './media/presets'
@@ -413,9 +413,14 @@ export function registerIpc(): void {
 
   // --- export ------------------------------------------------------------------
   ipcMain.handle(IPC.getExportPresets, () => EXPORT_PRESETS)
-  ipcMain.handle(IPC.startExport, (_e, req: ExportRequest) =>
-    startExport(req, (p) => broadcast(IPC.evExportProgress, p))
-  )
+  ipcMain.handle(IPC.startExport, (_e, req: ExportRequest) => {
+    // an export started while the app is quitting to update would be aborted
+    // seconds later by cancelAllExports() — refuse instead of losing the work
+    if (isApplyingUpdate()) {
+      throw new Error('アプリの更新を適用中です。再起動後にもう一度お試しください。')
+    }
+    return startExport(req, (p) => broadcast(IPC.evExportProgress, p))
+  })
   ipcMain.handle(IPC.cancelExport, (_e, id: string) => cancelExport(id))
 
   // --- prompt conversion (local CPU LLM) -----------------------------------------
