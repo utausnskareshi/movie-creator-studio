@@ -243,6 +243,29 @@ export function installComfyUI(cb: ProgressCb): Promise<void> {
 }
 
 /**
+ * Best-effort cleanup of renamed-aside engine trees (engine.__old-*) left by
+ * a previous update whose delete lost a race against a lingering lock. Runs
+ * at the start of every engine install/update; failures are ignored — the
+ * next run tries again.
+ */
+function sweepOldEngineDirs(): void {
+  const parent = dirname(engineDir())
+  const base = `${engineDir().split(/[\\/]/).pop()}.__old-`
+  try {
+    for (const entry of readdirSync(parent, { withFileTypes: true })) {
+      if (!entry.isDirectory() || !entry.name.startsWith(base)) continue
+      try {
+        rmSync(join(parent, entry.name), { recursive: true, force: true, maxRetries: 3, retryDelay: 200 })
+      } catch {
+        // still locked — leave it for the next sweep
+      }
+    }
+  } catch {
+    // parent unreadable — nothing to sweep
+  }
+}
+
+/**
  * Kill any process still executing from inside `root` (trailing separator is
  * enforced so "engine" can never match an "engine2" sibling). The path
  * travels as an environment variable — data, not script text — so spaces or
@@ -316,26 +339,51 @@ async function doInstallComfyUI(cb: ProgressCb): Promise<void> {
   const nodesToRestore = CUSTOM_NODES.filter((n) =>
     existsSync(join(customNodesDir(), n.id))
   ).map((n) => n.id)
+  sweepOldEngineDirs()
   if (existsSync(engineDir())) {
     // The wipe used to be a bare rmSync and failed with EPERM on real
-    // machines(実機: 上書きインストール直後の「エンジンを更新」)。causes:
+    // machines(実機: 上書きインストール直後の「エンジンを更新」で再現)。
+    // 実測で判明した機構: Node の rmSync はツリー内の「どれか1つ」でも
+    // ロックされたエントリがあると、失敗した実エントリではなく常にルート
+    // パスで `EPERM, Permission denied: <root> '<root>'` を投げる(排他
+    // オープン中の子ファイル/CWD保持/dirハンドル保持の全ケースで同形式を
+    // 確認)。犯人はエラーからは特定できない。原因側の実例:
     //  - an overwrite-install closes the app but can orphan the engine child
     //    (python.exe keeps running from inside engineDir and holds it)
     //  - AV/indexer transient locks while walking the ~7GB tree
-    // So: kill anything still executing from the folder, then delete with
-    // retries (Node retries EPERM/EBUSY/ENOTEMPTY on Windows when maxRetries
-    // is set). If it STILL fails, tell the user what actually helps.
+    // 対策は三段構え:
+    //  1. kill anything still executing from the folder
+    //  2. RENAME the tree aside first — a same-volume dir rename succeeds
+    //     even while files INSIDE are locked (only a handle on the dir
+    //     itself blocks it), which frees the extract path immediately
+    //  3. delete (renamed) tree with retries; a leftover graveyard dir is
+    //     non-fatal and swept on the next engine install/update
     cb(progress('comfyui', '旧エンジンを停止・削除中', 'extracting'))
     await killProcessesUnder(engineDir())
+    const graveyard = `${engineDir()}.__old-${Date.now()}`
+    let wipeTarget = engineDir()
     try {
-      rmSync(engineDir(), { recursive: true, force: true, maxRetries: 15, retryDelay: 400 })
+      renameSync(engineDir(), graveyard)
+      wipeTarget = graveyard
+    } catch {
+      // rename blocked = a handle on the directory itself; fall back to
+      // deleting in place (retries below may still win)
+    }
+    try {
+      rmSync(wipeTarget, { recursive: true, force: true, maxRetries: 15, retryDelay: 400 })
     } catch (e) {
-      const code = (e as NodeJS.ErrnoException)?.code ?? ''
-      throw new Error(
-        `旧エンジンフォルダを削除できませんでした(${code || 'エラー'}: ${engineDir()})。` +
-          'エクスプローラーやコマンドプロンプトでこのフォルダを開いている場合は閉じ、' +
-          'ウイルス対策ソフトのスキャン中の場合は1〜2分待ってから、もう一度「エンジンを更新」を押してください。'
-      )
+      if (wipeTarget === engineDir()) {
+        // the extract path is still occupied — this attempt cannot proceed
+        const code = (e as NodeJS.ErrnoException)?.code ?? ''
+        throw new Error(
+          `旧エンジンフォルダを削除できませんでした(${code || 'エラー'}: ${engineDir()})。` +
+            'エクスプローラーやコマンドプロンプトでこのフォルダを開いている場合は閉じ、' +
+            'ウイルス対策ソフトのスキャン中の場合は1〜2分待ってから、もう一度「エンジンを更新」を押してください。'
+        )
+      }
+      // renamed graveyard couldn't be fully deleted (lingering lock) — the
+      // extract path is free, so proceed; sweepOldEngineDirs() collects it
+      // on a later run
     }
   }
   await extract7z(archive, engineDir())
