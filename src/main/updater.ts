@@ -14,6 +14,8 @@ import type { ProgressInfo, UpdateInfo } from 'electron-updater'
 import type { UpdaterState } from '@shared/types'
 import { IPC } from '@shared/types'
 import { configDir } from './core/paths'
+import { comfyManager } from './comfyui/manager'
+import { llmManager } from './llm/manager'
 
 // electron-builder.yml の publish が指す utausnskareshi/movie-creator-studio
 // の GitHub Releases をフィードとして参照する(resources/app-update.yml)。
@@ -71,12 +73,30 @@ export async function checkForUpdatesNow(origin: 'startup' | 'manual'): Promise<
   } catch {
     // the 'error' listener has already logged and pushed the failure state
   }
+  // A settled check that emitted no terminal event would leave status stuck
+  // on 'checking' — which this function itself treats as "busy", permanently
+  // disabling the manual button. Release it. (Read through getUpdaterState:
+  // the event handlers mutate `state` during the await above, which the
+  // guard's narrowing at the top of this function does not account for.)
+  if (getUpdaterState().status === 'checking') push({ status: 'idle' })
   return getUpdaterState()
 }
 
-/** Quit, run the staged NSIS update silently, then relaunch the app. */
-export function installUpdateNow(): void {
+/**
+ * Quit, run the staged NSIS update silently, then relaunch the app.
+ *
+ * The engine MUST be stopped and awaited first. quitAndInstall() spawns the
+ * installer and then calls app.quit(); the app's 'before-quit' handler only
+ * *starts* comfyManager.stop() without awaiting it, so the process would exit
+ * with python.exe still alive — and that child's cwd is the engine folder,
+ * which then can't be deleted (実測: ロック中のCWDは rmSync を EPERM にする)。
+ * That orphan is exactly what makes a later「エンジンを更新」fail.
+ */
+export async function installUpdateNow(): Promise<void> {
   if (!state.supported || state.status !== 'downloaded') return
+  ulog('stopping engines before quitAndInstall')
+  llmManager.stop()
+  await comfyManager.stop().catch(() => undefined)
   ulog('quitAndInstall (user requested restart)')
   autoUpdater.quitAndInstall(true, true)
 }

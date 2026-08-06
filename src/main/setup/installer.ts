@@ -338,6 +338,10 @@ async function killProcessesUnder(root: string): Promise<void> {
 }
 
 async function doInstallComfyUI(cb: ProgressCb): Promise<void> {
+  // Collect a previous update's leftovers FIRST: the graveyard is a full
+  // ~7GB engine tree, and freeing it before the 2GB download (rather than
+  // after) keeps a tight disk from failing this update.
+  await sweepOldEngineDirs()
   // already on the pinned version — nothing to do (the same button doubles
   // as the「エンジンを更新」action when the pin moves with an app update)
   const versionFile = join(engineDir(), 'comfy-version.txt')
@@ -369,7 +373,6 @@ async function doInstallComfyUI(cb: ProgressCb): Promise<void> {
   const nodesToRestore = CUSTOM_NODES.filter((n) =>
     existsSync(join(customNodesDir(), n.id))
   ).map((n) => n.id)
-  await sweepOldEngineDirs()
   if (existsSync(engineDir())) {
     // The wipe used to be a bare rmSync and failed with EPERM on real
     // machines(実機: 上書きインストール直後の「エンジンを更新」で再現)。
@@ -400,7 +403,11 @@ async function doInstallComfyUI(cb: ProgressCb): Promise<void> {
       // deleting in place (retries below may still win)
     }
     try {
-      rmSync(wipeTarget, { recursive: true, force: true, maxRetries: 15, retryDelay: 400 })
+      // ASYNC rm, never rmSync: deleting the ~7GB tree takes seconds even
+      // when it succeeds (実測6.2秒), and each retry adds 400ms — a sync
+      // call blocks the main process for all of it, freezing the window and
+      // starving the progress IPC that tells the user what is happening.
+      await rm(wipeTarget, { recursive: true, force: true, maxRetries: 15, retryDelay: 400 })
     } catch (e) {
       if (wipeTarget === engineDir()) {
         // the extract path is still occupied — this attempt cannot proceed

@@ -23,6 +23,11 @@ export function cancelAllExports(): void {
   activeExports.clear()
 }
 
+/** true while any export is encoding (used to refuse quit-to-update) */
+export function hasActiveExport(): boolean {
+  return activeExports.size > 0
+}
+
 const FONT_CANDIDATES = [
   'C:/Windows/Fonts/meiryo.ttc',
   'C:/Windows/Fonts/YuGothM.ttc',

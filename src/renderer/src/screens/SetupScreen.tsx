@@ -708,9 +708,13 @@ function UpdaterCard(): React.JSX.Element {
             className="btn-ghost text-xs px-3 py-1"
             disabled={busy}
             title={busy ? '確認・ダウンロード中です' : 'GitHub の最新リリースと照合します'}
-            onClick={() => void window.mcs.checkForUpdates()}
+            onClick={() => void window.mcs.checkForUpdates().catch((e) => alert(cleanError(e)))}
           >
-            {busy ? '⏳ 確認中…' : '🔄 今すぐ更新を確認'}
+            {st.status === 'downloading'
+              ? '⏳ ダウンロード中…'
+              : st.status === 'checking'
+                ? '⏳ 確認中…'
+                : '🔄 今すぐ更新を確認'}
           </button>
         ) : (
           <span className="text-[11px] text-slate-500">
@@ -756,8 +760,8 @@ function UpdaterCard(): React.JSX.Element {
       )}
       {st.status === 'error' && (
         <div className="text-xs text-rose-400">
-          ⚠️ 更新の確認に失敗しました(オフラインの可能性)。
-          {st.error && <span className="text-slate-500"> 詳細: {st.error}</span>}
+          ⚠️ 更新の確認・ダウンロードに失敗しました(オフラインの可能性)。もう一度お試しください
+          {st.error && <span className="text-slate-500"> — 詳細: {st.error}</span>}
         </div>
       )}
       {st.supported && (st.status === 'idle' || st.status === 'checking') && (

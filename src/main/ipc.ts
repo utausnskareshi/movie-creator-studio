@@ -34,7 +34,7 @@ import { checkForUpdatesNow, getUpdaterState, installUpdateNow } from './updater
 import { jobQueue } from './jobs/queue'
 import { library } from './library/store'
 import { EXPORT_PRESETS } from './media/presets'
-import { cancelExport, startExport } from './media/exporter'
+import { cancelExport, hasActiveExport, startExport } from './media/exporter'
 
 function broadcast(channel: string, payload: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -426,22 +426,23 @@ export function registerIpc(): void {
   // --- app update ------------------------------------------------------------------
   ipcMain.handle(IPC.getUpdaterState, () => getUpdaterState())
   ipcMain.handle(IPC.checkForUpdates, () => checkForUpdatesNow('manual'))
-  ipcMain.handle(IPC.installUpdate, () => {
-    // quitAndInstall exits the app — mid-render it would kill the job the
-    // same way the engine-update wipe would (same rule, same wording style)
+  ipcMain.handle(IPC.installUpdate, async () => {
+    // quitAndInstall exits the app — anything long-running would be killed
+    // mid-flight. All three refusals end with the same reassurance: doing
+    // nothing still applies the update, just later.
+    const later = '(更新はアプリ終了時にも自動適用されます)'
     if (jobQueue.hasActive()) {
-      throw new Error(
-        '生成の実行中は更新の適用はできません。生成の完了(または中止)後にもう一度お試しください。(更新はアプリ終了時にも自動適用されます)'
-      )
+      throw new Error(`生成の実行中は更新の適用はできません。生成の完了(または中止)後にもう一度お試しください。${later}`)
+    }
+    if (hasActiveExport()) {
+      throw new Error(`書き出しの実行中は更新の適用はできません。完了後にもう一度お試しください。${later}`)
     }
     // quitting mid engine-extract would leave a half-written engine tree
-    // (recoverable, but pointlessly so — the update also applies on quit)
+    // (recoverable, but pointlessly so)
     if (isEngineInstallActive()) {
-      throw new Error(
-        'エンジンのインストール・更新の実行中は適用できません。完了後にもう一度お試しください。(更新はアプリ終了時にも自動適用されます)'
-      )
+      throw new Error(`エンジンのインストール・更新の実行中は適用できません。完了後にもう一度お試しください。${later}`)
     }
-    installUpdateNow()
+    await installUpdateNow()
   })
 
   // --- dialogs / shell -------------------------------------------------------------
